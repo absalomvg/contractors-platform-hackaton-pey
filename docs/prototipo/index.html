@@ -1,0 +1,1440 @@
+<!doctype html>
+<html lang="es-MX">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Praxis · Prototipo Funcional (Desktop + Móvil)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background-color: #F4FCFC;
+      color: #151D2D;
+    }
+    h1, h2, h3, h4, .font-display {
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    }
+    .tabular {
+      font-variant-numeric: tabular-nums;
+    }
+    .hide-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .hide-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    /* Marco de teléfono cuando se activa la Vista Móvil (390x844) */
+    body.viewport-mobile {
+      background-color: #0F172A;
+    }
+    body.viewport-mobile #device-stage {
+      max-width: 414px;
+      height: 852px;
+      margin: 18px auto 28px;
+      border-radius: 46px;
+      border: 11px solid #1E293B;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.65), 0 0 0 2px #334155;
+      background-color: #F4FCFC;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+    body.viewport-mobile #device-scroll {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-bottom: 78px;
+    }
+    /* En modo móvil forzamos layouts de 1 columna dentro del teléfono */
+    body.viewport-mobile .resp-grid-12,
+    body.viewport-mobile .resp-grid-3,
+    body.viewport-mobile .resp-grid-2 {
+      display: flex !important;
+      flex-direction: column !important;
+    }
+    body.viewport-mobile .desktop-only {
+      display: none !important;
+    }
+    body.viewport-mobile .mobile-only {
+      display: flex !important;
+    }
+    body.viewport-mobile .mobile-block {
+      display: block !important;
+    }
+    body:not(.viewport-mobile) .mobile-frame-bar {
+      display: none !important;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- BARRA SUPERIOR DE CONTROL DEL PROTOTIPO -->
+  <div class="bg-[#151D2D] text-white text-xs border-b border-slate-800 sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-2.5">
+      <!-- Switcher Desktop / Móvil -->
+      <div class="flex items-center gap-2">
+        <div class="inline-flex items-center bg-slate-900 p-0.5 rounded-full border border-slate-700">
+          <button onclick="setViewport('desktop')" id="vp-btn-desktop" class="px-3 py-1 rounded-full bg-[#9BEA73] text-[#163505] font-bold transition flex items-center gap-1">
+            <span>🖥️</span>
+            <span>Desktop</span>
+          </button>
+          <button onclick="setViewport('mobile')" id="vp-btn-mobile" class="px-3 py-1 rounded-full text-slate-300 hover:text-white font-semibold transition flex items-center gap-1">
+            <span>📱</span>
+            <span>Móvil (390×844)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Selector rápido de etapa -->
+      <div class="flex items-center gap-1.5 overflow-x-auto hide-scrollbar py-0.5">
+        <button onclick="goScreen('welcome')" id="proto-btn-welcome" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 transition whitespace-nowrap">1. Welcome</button>
+        <button onclick="goScreen('onboarding')" id="proto-btn-onboarding" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 transition whitespace-nowrap">2. Onboarding</button>
+        <button onclick="openFirstChargeGuide()" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 transition whitespace-nowrap">3. Guía 1.er Cobro</button>
+        <button onclick="goScreen('dashboard')" id="proto-btn-dashboard" class="px-2.5 py-1 rounded-full bg-[#9BEA73] text-[#163505] font-semibold transition whitespace-nowrap">4. Dashboard</button>
+        <button onclick="goScreen('clients')" id="proto-btn-clients" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 transition whitespace-nowrap">5. Clientes</button>
+        <button onclick="goScreen('payment')" id="proto-btn-payment" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 transition whitespace-nowrap">6. Cobrar</button>
+        <button onclick="toggleAssistant(true)" class="px-2.5 py-1 rounded-full bg-indigo-500/30 border border-indigo-400/40 text-indigo-200 hover:bg-indigo-500/40 transition whitespace-nowrap">✨ IA</button>
+        <button onclick="goScreen('profile')" id="proto-btn-profile" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 transition whitespace-nowrap">7. Perfil</button>
+      </div>
+
+      <!-- Acciones de simulación -->
+      <div class="flex items-center gap-2">
+        <select id="preset-selector" onchange="applyPreset(this.value)" class="bg-slate-800 border border-slate-700 text-slate-200 rounded-lg px-2 py-1 text-xs">
+          <option value="basket">🏀 Prof. Basquetbol</option>
+          <option value="yoga">🧘‍♀️ Instructora Yoga</option>
+          <option value="english">🇬🇧 Maestro Inglés</option>
+        </select>
+        <button onclick="simulateNextWebhook()" class="px-2.5 py-1 rounded-lg bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 hover:bg-emerald-500/30 font-medium transition whitespace-nowrap" title="Simula que api.pey.mx envía el webhook de pago recibido">
+          ⚡ Simular Pago
+        </button>
+        <a href="../FLUJO_WORKFLOW.html" class="text-slate-400 hover:text-white underline whitespace-nowrap ml-1">Diagrama</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTENEDOR DE NOTIFICACIÓN TOAST -->
+  <div id="toast-container" class="fixed bottom-5 right-5 z-50 space-y-2 max-w-sm w-full pointer-events-none px-4 sm:px-0"></div>
+
+  <!-- ESCENARIO DEL DISPOSITIVO (Se convierte en teléfono 390x844 en modo móvil) -->
+  <div id="device-stage" class="flex-1 flex flex-col w-full">
+
+    <!-- Status Bar de iOS/Android visible solo en Vista Móvil -->
+    <div class="mobile-frame-bar bg-white px-6 pt-2.5 pb-1.5 flex items-center justify-between text-[11px] font-bold text-slate-900 border-b border-slate-100 select-none shrink-0">
+      <span class="tabular">9:41</span>
+      <div class="w-20 h-4 rounded-full bg-slate-900"></div>
+      <div class="flex items-center gap-1.5 text-[10px]">
+        <span>5G</span>
+        <span>100% 🔋</span>
+      </div>
+    </div>
+
+    <!-- ÁREA SCROLLABLE INTERNA -->
+    <div id="device-scroll" class="flex-1 flex flex-col">
+
+      <!-- ================================================================= -->
+      <!-- PANTALLA 1: WELCOME -> USER                                       -->
+      <!-- ================================================================= -->
+      <section id="screen-welcome" class="hidden flex-1 flex items-center justify-center px-4 py-8">
+        <div class="max-w-4xl w-full grid grid-cols-1 lg:grid-cols-12 gap-8 items-center resp-grid-12">
+          <div class="lg:col-span-7 space-y-5">
+            <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-slate-200 shadow-xs text-xs font-semibold text-[#163505]">
+              <span class="w-2 h-2 rounded-full bg-[#9BEA73]"></span>
+              <span>0% comisión con CoDi · Directo a tu CLABE</span>
+            </div>
+
+            <h1 class="text-3xl sm:text-5xl font-extrabold tracking-tight text-[#151D2D] leading-[1.1]">
+              Tus clases y servicios, <span class="text-[#5170AD]">cobrados a tiempo</span>.
+            </h1>
+
+            <p class="text-slate-600 text-sm sm:text-base leading-relaxed">
+              Para <strong>profesores de basquetbol, instructores de yoga, maestros de inglés</strong> y profesionales independientes. Registra a tus alumnos, envía links de pago por WhatsApp o directo a su banco y manda recordatorios en un toque.
+            </p>
+
+            <div class="flex flex-wrap items-center gap-3 pt-1">
+              <button onclick="goScreen('onboarding')" class="w-full sm:w-auto justify-center px-6 py-3.5 rounded-full bg-[#151D2D] text-white font-bold text-sm hover:bg-slate-800 transition shadow-md flex items-center gap-2">
+                <span>Comenzar Onboarding</span>
+                <span>→</span>
+              </button>
+              <button onclick="goScreen('dashboard')" class="w-full sm:w-auto justify-center px-6 py-3.5 rounded-full bg-white border border-slate-300 text-[#151D2D] font-semibold text-sm hover:bg-slate-50 transition">
+                Entrar al Dashboard
+              </button>
+            </div>
+          </div>
+
+          <!-- Tarjeta visual -->
+          <div class="lg:col-span-5 bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-lg space-y-4 w-full">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <div class="text-xs text-slate-500 font-medium">Vista previa · Academia Hoops</div>
+                <div class="text-sm font-bold text-slate-900">Cobro de mensualidad</div>
+              </div>
+              <span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold text-xs">✓ •••• 4821</span>
+            </div>
+
+            <div class="bg-[#F4FCFC] rounded-2xl p-4 border border-slate-200/80 space-y-2">
+              <div class="flex items-center justify-between">
+                <div class="font-bold text-slate-900 text-sm">Mateo Hernández</div>
+                <span class="text-xs text-slate-500 tabular">55 4123 8910</span>
+              </div>
+              <div class="pt-2 border-t border-slate-200/60 flex items-baseline justify-between">
+                <span class="text-xs text-slate-500">Mensualidad Noviembre</span>
+                <span class="text-xl font-extrabold text-[#151D2D] tabular">$850.00</span>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <div class="p-2 rounded-xl border border-slate-200 bg-slate-50 text-center font-medium">🔗 Payment Link</div>
+              <div class="p-2 rounded-xl border border-slate-200 bg-slate-50 text-center font-medium">🏁 Código QR CoDi</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- PANTALLA 2: ONBOARDING (Stage 1 de los bocetos)                   -->
+      <!-- ================================================================= -->
+      <section id="screen-onboarding" class="hidden flex-1 py-6 px-4">
+        <div class="max-w-3xl mx-auto space-y-5">
+          <div class="flex items-center justify-between">
+            <div>
+              <span class="text-xs font-bold uppercase tracking-wider text-[#5170AD]">Stage 1 · Onboarding</span>
+              <h1 class="text-xl sm:text-2xl font-extrabold text-slate-900">Configura tu perfil y CLABE</h1>
+            </div>
+            <button onclick="goScreen('dashboard')" class="text-xs font-semibold text-slate-500 hover:text-slate-900 underline">
+              Saltar →
+            </button>
+          </div>
+
+          <!-- Info del proceso -->
+          <div class="bg-[#151D2D] text-white rounded-2xl p-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs resp-grid-3">
+            <div class="flex items-start gap-2.5">
+              <span class="w-5 h-5 rounded-full bg-[#9BEA73] text-[#163505] font-bold flex items-center justify-center shrink-0">1</span>
+              <div>
+                <div class="font-bold">Tu CLABE directa</div>
+                <p class="text-slate-300 text-[11px]">Recibes cada pago en tu banco con 0% comisión.</p>
+              </div>
+            </div>
+            <div class="flex items-start gap-2.5">
+              <span class="w-5 h-5 rounded-full bg-[#9BEA73] text-[#163505] font-bold flex items-center justify-center shrink-0">2</span>
+              <div>
+                <div class="font-bold">Tus alumnos/clientes</div>
+                <p class="text-slate-300 text-[11px]">Guarda su celular o correo para enviar cobros rápido.</p>
+              </div>
+            </div>
+            <div class="flex items-start gap-2.5">
+              <span class="w-5 h-5 rounded-full bg-[#9BEA73] text-[#163505] font-bold flex items-center justify-center shrink-0">3</span>
+              <div>
+                <div class="font-bold">Recordatorios en 1 clic</div>
+                <p class="text-slate-300 text-[11px]">Filtra pendientes y manda MSJ Reminders por WhatsApp.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Formulario -->
+          <form onsubmit="submitOnboarding(event)" class="bg-white rounded-3xl border border-slate-200 shadow-xs p-5 sm:p-6 space-y-5">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-sm resp-grid-2">
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Nombre del propietario *</label>
+                <input id="ob-owner" type="text" required value="Carlos Morales" class="w-full rounded-xl border border-slate-300 px-3.5 py-2">
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Nombre del negocio / academia *</label>
+                <input id="ob-business" type="text" required value="Academia Hoops Basquetbol" class="w-full rounded-xl border border-slate-300 px-3.5 py-2">
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Profesión u oficio *</label>
+                <input id="ob-profession" type="text" required value="Profesor de Basquetbol" class="w-full rounded-xl border border-slate-300 px-3.5 py-2">
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Giro / Sector *</label>
+                <select id="ob-sector" class="w-full rounded-xl border border-slate-300 px-3.5 py-2 bg-white">
+                  <option value="Deportes y Entrenamiento">Deportes y Entrenamiento</option>
+                  <option value="Educación e Idiomas">Educación e Idiomas</option>
+                  <option value="Salud, Yoga y Bienestar">Salud, Yoga y Bienestar</option>
+                  <option value="Servicios Profesionales y Consultoría">Servicios Profesionales y Consultoría</option>
+                  <option value="Oficios y Servicios Técnicos">Oficios y Servicios Técnicos</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Régimen Fiscal</label>
+                <select id="ob-regime" class="w-full rounded-xl border border-slate-300 px-3.5 py-2 bg-white">
+                  <option value="RESICO (Régimen Simplificado de Confianza)">RESICO</option>
+                  <option value="Persona Física con Actividad Empresarial y Profesional">Persona Física (PFAE)</option>
+                  <option value="Por definir">Por definir</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Número de teléfono (10 dígitos) *</label>
+                <input id="ob-phone" type="tel" maxlength="10" required value="5512345678" class="w-full rounded-xl border border-slate-300 px-3.5 py-2 tabular">
+              </div>
+            </div>
+
+            <div class="pt-3 border-t border-slate-100">
+              <div class="flex items-center justify-between mb-1">
+                <label class="block text-xs font-semibold text-slate-700">CLABE Bancaria (18 dígitos) *</label>
+                <span class="text-[11px] text-emerald-700 font-semibold">🔒 •••• <span id="ob-clabe-preview">4821</span></span>
+              </div>
+              <input id="ob-clabe" type="text" maxlength="18" required value="012180001234564821" oninput="updateClabePreview(this.value)" class="w-full rounded-xl border border-slate-300 px-3.5 py-2 tabular font-mono text-sm">
+            </div>
+
+            <div class="pt-3 border-t border-slate-100 space-y-2.5">
+              <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500">Primer cliente opcional (para tu 1.er cobro)</h3>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-sm resp-grid-3">
+                <input id="ob-client-name" type="text" value="Mateo Hernández" placeholder="Nombre del cliente" class="w-full rounded-xl border border-slate-300 px-3 py-2">
+                <input id="ob-client-phone" type="tel" maxlength="10" value="5541238910" placeholder="Teléfono (10 dígitos)" class="w-full rounded-xl border border-slate-300 px-3 py-2 tabular">
+                <input id="ob-client-email" type="email" value="mateo.hoops@ejemplo.mx" placeholder="Correo electrónico" class="w-full rounded-xl border border-slate-300 px-3 py-2">
+              </div>
+            </div>
+
+            <button type="submit" class="w-full py-3.5 rounded-full bg-[#9BEA73] text-[#163505] font-bold text-sm hover:brightness-95 transition shadow-md">
+              Guardar e ir a mi Dashboard →
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- SHELL PRINCIPAL DE LA APP                                         -->
+      <!-- ================================================================= -->
+      <div id="app-shell" class="flex-1 flex flex-col">
+        <!-- Header Superior -->
+        <header class="bg-white border-b border-slate-200">
+          <div class="max-w-7xl mx-auto px-4 py-3.5 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <div class="w-9 h-9 rounded-2xl bg-[#151D2D] text-[#9BEA73] font-extrabold flex items-center justify-center text-base shrink-0">
+                P
+              </div>
+              <div class="min-w-0">
+                <div class="flex items-center gap-1.5">
+                  <span id="header-business-name" class="font-bold text-slate-900 text-sm sm:text-base truncate">Academia Hoops Basquetbol</span>
+                  <span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-semibold shrink-0">
+                    •••• <span id="header-clabe-last4">4821</span>
+                  </span>
+                </div>
+                <div class="text-[11px] text-slate-500 truncate">
+                  <span id="header-owner-name">Carlos Morales</span> · <span id="header-profession">Profesor de Basquetbol</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Navegación Desktop (oculta en vista móvil porque usa barra inferior) -->
+            <nav class="hidden md:flex items-center gap-1 bg-slate-100 p-1 rounded-full text-xs font-semibold desktop-only">
+              <button onclick="goScreen('dashboard')" id="nav-dashboard" class="px-4 py-1.5 rounded-full bg-white text-slate-900 shadow-xs transition">
+                Dashboard
+              </button>
+              <button onclick="goScreen('clients')" id="nav-clients" class="px-4 py-1.5 rounded-full text-slate-600 hover:text-slate-900 transition">
+                Clientes (<span id="nav-clients-count">5</span>)
+              </button>
+              <button onclick="goScreen('payment')" id="nav-payment" class="px-4 py-1.5 rounded-full text-slate-600 hover:text-slate-900 transition">
+                Solicitar Pago
+              </button>
+              <button onclick="goScreen('profile')" id="nav-profile" class="px-4 py-1.5 rounded-full text-slate-600 hover:text-slate-900 transition">
+                Mi Perfil
+              </button>
+            </nav>
+
+            <!-- Botones de acción en header -->
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button onclick="toggleAssistant(true)" class="px-3 py-1.5 rounded-full bg-indigo-50 text-[#5170AD] border border-indigo-200 font-semibold text-xs hover:bg-indigo-100 transition">
+                ✨ IA
+              </button>
+              <button onclick="openNewPaymentForClient()" class="px-3.5 py-1.5 rounded-full bg-[#151D2D] text-white font-bold text-xs hover:bg-slate-800 transition">
+                + Cobrar
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <!-- Contenido de las Vistas -->
+        <main class="flex-1 max-w-7xl w-full mx-auto px-4 py-5 space-y-5">
+
+          <!-- BANNER GUÍA 1ER COBRO -->
+          <div id="first-charge-banner" class="hidden bg-[#151D2D] text-white rounded-2xl p-4 sm:p-5 shadow-md border border-slate-800 space-y-3">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <span class="inline-block px-2 py-0.5 rounded-full bg-[#9BEA73] text-[#163505] text-[10px] font-bold mb-1">
+                  🎉 Registro exitoso · Haz tu 1.er cobro
+                </span>
+                <h2 class="text-base sm:text-lg font-extrabold">Envía tu primer link de pago</h2>
+                <p class="text-xs text-slate-300 mt-0.5">
+                  Prueba enviar el cobro a <strong id="banner-first-client">Mateo Hernández</strong> a tu cuenta <strong>•••• <span id="banner-clabe-last4">4821</span></strong>:
+                </p>
+              </div>
+              <button onclick="closeFirstChargeGuide()" class="text-slate-400 hover:text-white text-xs">✕</button>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button onclick="quickFirstCharge('whatsapp')" class="flex-1 sm:flex-none justify-center px-3.5 py-2 rounded-full bg-[#9BEA73] text-[#163505] font-bold text-xs flex items-center gap-1.5">
+                <span>💬</span><span>1. Envío WhatsApp</span>
+              </button>
+              <button onclick="quickFirstCharge('email')" class="flex-1 sm:flex-none justify-center px-3.5 py-2 rounded-full bg-white/10 text-white font-semibold text-xs flex items-center gap-1.5">
+                <span>✉️</span><span>2. Envío Correo</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- ============================================================= -->
+          <!-- VISTA DASHBOARD HOME                                          -->
+          <!-- ============================================================= -->
+          <div id="view-dashboard" class="space-y-5">
+            <!-- Tarjetas de Resumen (Balance Cobrado vs Por Cobrar) -->
+            <div class="grid grid-cols-2 lg:grid-cols-12 gap-3 sm:gap-4">
+              <!-- Cobrado -->
+              <div class="col-span-1 lg:col-span-4 bg-white rounded-2xl p-4 border border-slate-200 shadow-xs flex flex-col justify-between">
+                <div class="flex items-center justify-between gap-1">
+                  <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Cobrado</span>
+                  <span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold">0% com.</span>
+                </div>
+                <div class="my-2">
+                  <div id="stat-settled-amount" class="text-xl sm:text-3xl font-extrabold text-[#151D2D] tabular">$3,100.00</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">
+                    <span id="stat-settled-count" class="font-semibold text-slate-700">4</span> pagos · •••• <span id="stat-clabe">4821</span>
+                  </div>
+                </div>
+                <button onclick="setFilter('SETTLED')" class="text-[11px] font-semibold text-[#5170AD] text-left hover:underline">
+                  Ver completados →
+                </button>
+              </div>
+
+              <!-- Por Cobrar -->
+              <div class="col-span-1 lg:col-span-4 bg-white rounded-2xl p-4 border border-slate-200 shadow-xs flex flex-col justify-between">
+                <div class="flex items-center justify-between gap-1">
+                  <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Por Cobrar</span>
+                  <span id="stat-pending-badge" class="px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 text-[10px] font-bold">4 pend.</span>
+                </div>
+                <div class="my-2">
+                  <div id="stat-pending-amount" class="text-xl sm:text-3xl font-extrabold text-amber-600 tabular">$2,950.00</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">
+                    En <span id="stat-pending-clients" class="font-semibold text-slate-700">4</span> clientes
+                  </div>
+                </div>
+                <button onclick="sendBulkReminders()" class="text-[11px] font-bold text-amber-800 text-left hover:underline">
+                  🔔 Recordar a todos →
+                </button>
+              </div>
+
+              <!-- Accesos Rápidos -->
+              <div class="col-span-2 lg:col-span-4 bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
+                <div class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">Accesos Rápidos</div>
+                <div class="grid grid-cols-4 lg:grid-cols-2 gap-2 text-xs">
+                  <button onclick="openNewPaymentForClient(null, 'PAYMENT_LINK')" class="p-2.5 rounded-xl bg-[#F4FCFC] hover:bg-slate-100 border border-slate-200 text-center lg:text-left transition">
+                    <div class="text-base">🔗</div>
+                    <div class="font-bold text-slate-900 text-[11px] mt-0.5">Link de Pago</div>
+                  </button>
+                  <button onclick="openNewPaymentForClient(null, 'CODI_QR')" class="p-2.5 rounded-xl bg-[#F4FCFC] hover:bg-slate-100 border border-slate-200 text-center lg:text-left transition">
+                    <div class="text-base">🏁</div>
+                    <div class="font-bold text-slate-900 text-[11px] mt-0.5">QR CoDi</div>
+                  </button>
+                  <button onclick="openAddClientModal()" class="p-2.5 rounded-xl bg-[#F4FCFC] hover:bg-slate-100 border border-slate-200 text-center lg:text-left transition">
+                    <div class="text-base">👤</div>
+                    <div class="font-bold text-slate-900 text-[11px] mt-0.5">+ Cliente</div>
+                  </button>
+                  <button onclick="toggleAssistant(true)" class="p-2.5 rounded-xl bg-indigo-50/70 hover:bg-indigo-100 border border-indigo-200 text-center lg:text-left transition">
+                    <div class="text-base">✨</div>
+                    <div class="font-bold text-[#5170AD] text-[11px] mt-0.5">Asistente</div>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- SECCIÓN DE REGISTRO DE COBROS (Tabla en Desktop + Tarjetas en Móvil) -->
+            <div class="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+              <!-- Controles de Filtro y Búsqueda -->
+              <div class="p-4 sm:p-5 border-b border-slate-200 space-y-3">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div>
+                    <h2 class="text-base sm:text-lg font-bold text-slate-900">Registro de Cobros y Pagos</h2>
+                    <p class="text-xs text-slate-500">Badges de estatus, filtros y envío de recordatorios (<code class="text-[11px] bg-slate-100 px-1 rounded">MSJ Reminders</code>).</p>
+                  </div>
+                  <input id="search-input" type="search" oninput="renderDashboard()" placeholder="Buscar cliente o concepto..." class="rounded-full border border-slate-300 px-3.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#5170AD] w-full sm:w-56">
+                </div>
+
+                <!-- Píldoras de filtro deslizable en móvil -->
+                <div class="flex items-center gap-1.5 overflow-x-auto hide-scrollbar pb-0.5 text-xs font-semibold">
+                  <button onclick="setFilter('ALL')" id="filter-ALL" class="px-3 py-1.5 rounded-full bg-[#151D2D] text-white whitespace-nowrap transition">
+                    Todos (<span id="count-ALL">0</span>)
+                  </button>
+                  <button onclick="setFilter('PENDING_PAYMENT')" id="filter-PENDING_PAYMENT" class="px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 hover:text-slate-900 whitespace-nowrap transition">
+                    ⏳ Pendientes (<span id="count-PENDING_PAYMENT">0</span>)
+                  </button>
+                  <button onclick="setFilter('SETTLED')" id="filter-SETTLED" class="px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 hover:text-slate-900 whitespace-nowrap transition">
+                    ✓ Completados (<span id="count-SETTLED">0</span>)
+                  </button>
+                  <button onclick="setFilter('EXPIRED')" id="filter-EXPIRED" class="px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 hover:text-slate-900 whitespace-nowrap transition">
+                    ⚠ Vencidos (<span id="count-EXPIRED">0</span>)
+                  </button>
+                </div>
+              </div>
+
+              <!-- 1. Tabla Desktop (oculta en móvil o cuando se activa el toggle Móvil) -->
+              <div class="hidden md:block overflow-x-auto desktop-only">
+                <table class="w-full text-left border-collapse">
+                  <thead>
+                    <tr class="border-b border-slate-200 bg-slate-50/70 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      <th class="py-3 px-5">Cliente / Contacto</th>
+                      <th class="py-3 px-4">Concepto y Canal</th>
+                      <th class="py-3 px-4 text-right">Cantidad</th>
+                      <th class="py-3 px-4">Estatus</th>
+                      <th class="py-3 px-4">Recordatorios</th>
+                      <th class="py-3 px-5 text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody id="payments-table-body" class="divide-y divide-slate-100 text-sm"></tbody>
+                </table>
+              </div>
+
+              <!-- 2. Lista de Tarjetas Móvil (visible en pantallas pequeñas o en Vista Móvil) -->
+              <div id="payments-mobile-list" class="md:hidden mobile-block divide-y divide-slate-100"></div>
+            </div>
+          </div>
+
+          <!-- ============================================================= -->
+          <!-- VISTA CLIENTES (Clients List + Per Client Balance)            -->
+          <!-- ============================================================= -->
+          <div id="view-clients" class="hidden space-y-4">
+            <div class="flex items-center justify-between gap-2">
+              <div>
+                <h1 class="text-lg sm:text-2xl font-extrabold text-slate-900">Clientes y Saldos</h1>
+                <p class="text-xs text-slate-500">Balance individual (<code class="text-[11px]">Per Client Balance</code>) de cada alumno/cliente.</p>
+              </div>
+              <button onclick="openAddClientModal()" class="px-4 py-2 rounded-full bg-[#151D2D] text-white font-bold text-xs shrink-0">
+                + Nuevo Cliente
+              </button>
+            </div>
+
+            <div id="clients-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 resp-grid-3"></div>
+          </div>
+
+          <!-- ============================================================= -->
+          <!-- VISTA SOLICITAR PAGO (Link / Push / QR)                       -->
+          <!-- ============================================================= -->
+          <div id="view-payment" class="hidden space-y-5">
+            <div class="max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-5 resp-grid-12">
+              <div class="lg:col-span-7 bg-white rounded-3xl border border-slate-200 shadow-xs p-5 space-y-4">
+                <div>
+                  <span class="text-xs font-bold uppercase tracking-wider text-emerald-700">Stage 2 · Request Payment</span>
+                  <h2 class="text-lg font-extrabold text-slate-900">Crear y enviar cobro</h2>
+                </div>
+
+                <div class="space-y-3.5 text-sm">
+                  <div>
+                    <div class="flex items-center justify-between mb-1">
+                      <label class="text-xs font-semibold text-slate-700">1. Cliente / Alumno</label>
+                      <button type="button" onclick="openAddClientModal()" class="text-xs font-semibold text-[#5170AD]">+ Nuevo</button>
+                    </div>
+                    <select id="pay-client-select" onchange="updatePaymentPreview()" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 bg-white"></select>
+                  </div>
+
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">2. Servicio o Concepto</label>
+                    <div id="service-chips" class="flex flex-wrap gap-1.5 mb-2"></div>
+                    <input id="pay-concept" type="text" maxlength="40" value="Mensualidad Noviembre" oninput="updatePaymentPreview()" class="w-full rounded-xl border border-slate-300 px-3 py-2">
+                  </div>
+
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">3. Monto (MXN)</label>
+                    <div class="relative">
+                      <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-lg font-bold text-slate-400">$</span>
+                      <input id="pay-amount" type="number" min="1" max="8000" value="850" oninput="updatePaymentPreview()" class="w-full rounded-xl border border-slate-300 pl-8 pr-14 py-2.5 text-2xl font-extrabold tabular">
+                      <span class="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">MXN</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1.5">4. Canal de cobro</label>
+                    <div class="grid grid-cols-2 gap-2">
+                      <button type="button" onclick="selectChannel('PAYMENT_LINK')" id="ch-btn-PAYMENT_LINK" class="p-2.5 rounded-2xl border-2 border-[#151D2D] bg-[#F4FCFC] text-center transition">
+                        <div class="text-base">🔗</div>
+                        <div class="font-bold text-[11px] text-slate-900 mt-0.5">Payment Link</div>
+                      </button>
+                      <button type="button" onclick="selectChannel('CODI_QR')" id="ch-btn-CODI_QR" class="p-2.5 rounded-2xl border border-slate-200 bg-white text-center transition">
+                        <div class="text-base">🏁</div>
+                        <div class="font-bold text-[11px] text-slate-900 mt-0.5">Código QR CoDi</div>
+                      </button>
+                    </div>
+                  </div>
+
+                  <button type="button" onclick="createAndSendPaymentIntent()" class="w-full py-3 rounded-full bg-[#9BEA73] text-[#163505] font-bold text-sm shadow-sm">
+                    Generar Cobro y Guardar →
+                  </button>
+                </div>
+              </div>
+
+              <div class="lg:col-span-5 bg-white rounded-3xl border border-slate-200 shadow-xs p-5">
+                <div id="channel-preview-container"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ============================================================= -->
+          <!-- VISTA PERFIL DEL USUARIO                                      -->
+          <!-- ============================================================= -->
+          <div id="view-profile" class="hidden max-w-3xl mx-auto space-y-4">
+            <div class="bg-white rounded-3xl border border-slate-200 shadow-xs p-5 sm:p-6 space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h2 class="text-lg font-extrabold text-slate-900">Perfil Profesional y CLABE</h2>
+                <button onclick="goScreen('onboarding')" class="px-3 py-1.5 rounded-full border border-slate-300 text-xs font-semibold">
+                  Editar
+                </button>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm resp-grid-2">
+                <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70">
+                  <div class="text-xs text-slate-500">Propietario</div>
+                  <div id="prof-owner" class="font-bold text-slate-900">Carlos Morales</div>
+                </div>
+                <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70">
+                  <div class="text-xs text-slate-500">Negocio</div>
+                  <div id="prof-business" class="font-bold text-slate-900">Academia Hoops Basquetbol</div>
+                </div>
+                <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70">
+                  <div class="text-xs text-slate-500">Profesión</div>
+                  <div id="prof-profession" class="font-bold text-slate-900">Profesor de Basquetbol</div>
+                </div>
+                <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70">
+                  <div class="text-xs text-slate-500">Giro / Sector</div>
+                  <div id="prof-sector" class="font-bold text-slate-900">Deportes y Entrenamiento</div>
+                </div>
+                <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70">
+                  <div class="text-xs text-slate-500">Régimen Fiscal</div>
+                  <div id="prof-regime" class="font-bold text-slate-900">RESICO</div>
+                </div>
+                <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70">
+                  <div class="text-xs text-slate-500">Teléfono</div>
+                  <div id="prof-phone" class="font-bold text-slate-900 tabular">5512345678</div>
+                </div>
+              </div>
+
+              <div class="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between gap-2">
+                <div>
+                  <div class="text-[11px] font-bold uppercase text-emerald-800">Cuenta en api.pey.mx</div>
+                  <div class="text-base font-extrabold text-slate-900">CLABE •••• <span id="prof-clabe">4821</span></div>
+                </div>
+                <span class="px-3 py-1 rounded-full bg-emerald-600 text-white text-xs font-bold">✓ Activa</span>
+              </div>
+            </div>
+          </div>
+
+        </main>
+      </div>
+
+    </div><!-- /device-scroll -->
+
+    <!-- BARRA DE NAVEGACIÓN INFERIOR (Visible en Móvil y en el marco 390x844) -->
+    <nav id="mobile-bottom-nav" class="md:hidden mobile-only bg-white border-t border-slate-200 px-3 py-2 flex items-center justify-around text-[11px] font-semibold shrink-0 z-30">
+      <button onclick="goScreen('dashboard')" id="mnav-dashboard" class="flex flex-col items-center gap-0.5 text-[#151D2D] font-bold">
+        <span class="text-base">📊</span>
+        <span>Dashboard</span>
+      </button>
+      <button onclick="goScreen('clients')" id="mnav-clients" class="flex flex-col items-center gap-0.5 text-slate-500">
+        <span class="text-base">👥</span>
+        <span>Clientes</span>
+      </button>
+      <button onclick="openNewPaymentForClient()" id="mnav-payment" class="flex flex-col items-center gap-0.5 text-slate-500">
+        <span class="w-9 h-9 -mt-4 rounded-full bg-[#9BEA73] text-[#163505] flex items-center justify-center font-extrabold text-lg shadow-md border-2 border-white">+</span>
+        <span>Cobrar</span>
+      </button>
+      <button onclick="toggleAssistant(true)" class="flex flex-col items-center gap-0.5 text-slate-500">
+        <span class="text-base">✨</span>
+        <span>Asistente</span>
+      </button>
+      <button onclick="goScreen('profile')" id="mnav-profile" class="flex flex-col items-center gap-0.5 text-slate-500">
+        <span class="text-base">👤</span>
+        <span>Perfil</span>
+      </button>
+    </nav>
+
+  </div><!-- /device-stage -->
+
+  <!-- ===================================================================== -->
+  <!-- MODAL: ENVIAR RECORDATORIO (MSJ REMINDER)                             -->
+  <!-- ===================================================================== -->
+  <div id="reminder-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-5 border border-slate-200 shadow-2xl space-y-4">
+      <div class="flex items-start justify-between">
+        <div>
+          <span class="text-xs font-bold uppercase tracking-wider text-amber-700">MSJ Reminder</span>
+          <h3 id="rem-modal-title" class="text-base font-extrabold text-slate-900">Recordatorio de pago</h3>
+        </div>
+        <button onclick="closeReminderModal()" class="text-slate-400 hover:text-slate-700 font-bold">✕</button>
+      </div>
+
+      <textarea id="rem-modal-text" rows="4" class="w-full rounded-xl border border-slate-300 p-3 text-slate-800 bg-slate-50 text-xs leading-relaxed"></textarea>
+
+      <div class="grid grid-cols-2 gap-2 text-xs font-bold">
+        <button onclick="confirmSendReminder('WhatsApp')" class="py-2.5 px-3 rounded-xl bg-[#9BEA73] text-[#163505]">💬 WhatsApp</button>
+        <button onclick="confirmSendReminder('Correo')" class="py-2.5 px-3 rounded-xl bg-[#151D2D] text-white">✉️ Correo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL: AGREGAR NUEVO CLIENTE                                          -->
+  <!-- ===================================================================== -->
+  <div id="add-client-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <form onsubmit="submitNewClient(event)" class="bg-white rounded-3xl max-w-sm w-full p-5 border border-slate-200 shadow-2xl space-y-3.5">
+      <div class="flex items-start justify-between">
+        <h3 class="text-base font-extrabold text-slate-900">Nuevo Cliente / Alumno</h3>
+        <button type="button" onclick="closeAddClientModal()" class="text-slate-400 hover:text-slate-700 font-bold">✕</button>
+      </div>
+      <div class="space-y-2.5 text-sm">
+        <input id="new-client-name" type="text" required placeholder="Nombre completo *" class="w-full rounded-xl border border-slate-300 px-3 py-2">
+        <input id="new-client-phone" type="tel" maxlength="10" required placeholder="Celular 10 dígitos *" class="w-full rounded-xl border border-slate-300 px-3 py-2 tabular">
+        <input id="new-client-email" type="email" placeholder="Correo electrónico" class="w-full rounded-xl border border-slate-300 px-3 py-2">
+        <input id="new-client-notes" type="text" placeholder="Grupo / Horario" class="w-full rounded-xl border border-slate-300 px-3 py-2">
+      </div>
+      <div class="flex justify-end gap-2 pt-1">
+        <button type="button" onclick="closeAddClientModal()" class="px-4 py-2 rounded-full border border-slate-300 text-xs font-semibold">Cancelar</button>
+        <button type="submit" class="px-4 py-2 rounded-full bg-[#151D2D] text-white text-xs font-bold">Guardar</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- DRAWER: AGENTS ASSISTANT                                              -->
+  <!-- ===================================================================== -->
+  <div id="assistant-drawer" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex justify-end">
+    <div class="bg-white w-full max-w-sm h-full shadow-2xl border-l border-slate-200 flex flex-col justify-between p-5">
+      <div class="space-y-4 overflow-y-auto">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div class="flex items-center gap-2">
+            <span class="w-7 h-7 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-sm font-bold">✨</span>
+            <h3 class="font-extrabold text-slate-900 text-sm">Agents Assistant</h3>
+          </div>
+          <button onclick="toggleAssistant(false)" class="text-slate-400 hover:text-slate-700 font-bold">✕</button>
+        </div>
+
+        <div class="space-y-2 text-xs">
+          <button onclick="runAssistantPrompt('charge')" class="w-full p-3 rounded-2xl bg-slate-50 hover:bg-indigo-50 border border-slate-200 text-left">
+            🎙️ "Cóbrale <strong>$850</strong> a <strong>Mateo</strong> de la mensualidad por WhatsApp"
+          </button>
+          <button onclick="runAssistantPrompt('debtors')" class="w-full p-3 rounded-2xl bg-slate-50 hover:bg-indigo-50 border border-slate-200 text-left">
+            📊 "¿Quiénes me faltan por pagar este mes?"
+          </button>
+          <button onclick="runAssistantPrompt('remind')" class="w-full p-3 rounded-2xl bg-slate-50 hover:bg-indigo-50 border border-slate-200 text-left">
+            🔔 "Prepara un recordatorio para <strong>Sofía</strong>"
+          </button>
+        </div>
+
+        <div id="assistant-output" class="bg-[#F4FCFC] rounded-2xl p-3.5 border border-slate-200 text-xs space-y-2.5">
+          <p class="text-slate-600">Toca un comando arriba para generar un borrador de cobro (<code class="bg-white px-1 rounded">intentDraft</code>) o consultar saldos pendientes.</p>
+        </div>
+      </div>
+
+      <form onsubmit="submitCustomAssistant(event)" class="pt-3 border-t border-slate-200 flex gap-2">
+        <input id="assistant-input" type="text" placeholder="Escribe una instrucción..." class="flex-1 rounded-full border border-slate-300 px-3.5 py-2 text-xs">
+        <button type="submit" class="px-4 py-2 rounded-full bg-[#151D2D] text-white font-bold text-xs">Enviar</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- LÓGICA INTERACTIVA                                                    -->
+  <!-- ===================================================================== -->
+  <script>
+    const PRESETS = {
+      basket: {
+        ownerName: 'Carlos Morales',
+        businessName: 'Academia Hoops Basquetbol',
+        profession: 'Profesor de Basquetbol',
+        sector: 'Deportes y Entrenamiento',
+        taxRegime: 'RESICO',
+        phone: '5512345678',
+        clabeLast4: '4821',
+        services: [
+          { name: 'Mensualidad Noviembre', fee: 850 },
+          { name: 'Clínica de Tiro', fee: 450 },
+          { name: 'Uniforme + Inscripción', fee: 1200 },
+        ],
+        clients: [
+          { id: 'cli_1', name: 'Mateo Hernández', phone: '5541238910', email: 'mateo.hoops@ejemplo.mx', notes: 'Juvenil · Mar/Jue 17:00' },
+          { id: 'cli_2', name: 'Sofía Ramírez', phone: '5587654321', email: 'sofia.ramirez@ejemplo.mx', notes: 'Infantil · Lun/Mié 16:00' },
+          { id: 'cli_3', name: 'Diego Castellanos', phone: '5533445566', email: 'diego.cast@ejemplo.mx', notes: 'Entrenamiento Individual' },
+          { id: 'cli_4', name: 'Lucía Mendoza', phone: '5599887766', email: 'lucia.mendoza@ejemplo.mx', notes: 'Juvenil · Mar/Jue 17:00' },
+          { id: 'cli_5', name: 'Andrés Villalobos', phone: '5522334455', email: 'andres.villa@ejemplo.mx', notes: 'Clínica Sabatina' },
+        ],
+        payments: [
+          { id: 'pi_101', clientId: 'cli_1', concept: 'Mensualidad Noviembre', amount: 850, channel: 'PAYMENT_LINK', status: 'PENDING_PAYMENT', reminders: 1, lastReminder: 'Hace 2 días', date: '14 Nov' },
+          { id: 'pi_102', clientId: 'cli_2', concept: 'Mensualidad Noviembre', amount: 850, channel: 'PAYMENT_LINK', status: 'EXPIRED', reminders: 2, lastReminder: 'Ayer 18:40', date: '10 Nov' },
+          { id: 'pi_103', clientId: 'cli_3', concept: 'Entrenamiento Individual', amount: 900, channel: 'PAYMENT_LINK', status: 'PENDING_PAYMENT', reminders: 0, lastReminder: 'Sin enviar', date: '14 Nov' },
+          { id: 'pi_104', clientId: 'cli_5', concept: 'Clínica de Tiro', amount: 350, channel: 'CODI_QR', status: 'PENDING_PAYMENT', reminders: 0, lastReminder: 'Sin enviar', date: '14 Nov' },
+          { id: 'pi_105', clientId: 'cli_4', concept: 'Mensualidad Noviembre', amount: 850, channel: 'PAYMENT_LINK', status: 'SETTLED', reminders: 1, lastReminder: 'Pagado al 1er aviso', date: '12 Nov' },
+          { id: 'pi_106', clientId: 'cli_1', concept: 'Mensualidad Octubre', amount: 850, channel: 'PAYMENT_LINK', status: 'SETTLED', reminders: 0, lastReminder: '—', date: '05 Oct' },
+          { id: 'pi_107', clientId: 'cli_3', concept: 'Uniforme + Inscripción', amount: 1200, channel: 'CODI_QR', status: 'SETTLED', reminders: 0, lastReminder: '—', date: '02 Nov' },
+          { id: 'pi_108', clientId: 'cli_5', concept: 'Clase muestra', amount: 200, channel: 'CODI_QR', status: 'SETTLED', reminders: 0, lastReminder: '—', date: '01 Nov' },
+        ]
+      },
+      yoga: {
+        ownerName: 'Elena Vargas',
+        businessName: 'Prana Yoga Studio',
+        profession: 'Instructora de Yoga',
+        sector: 'Salud, Yoga y Bienestar',
+        taxRegime: 'RESICO',
+        phone: '5598765432',
+        clabeLast4: '9104',
+        services: [
+          { name: 'Paquete 8 Clases Vinyasa', fee: 1100 },
+          { name: 'Clase Suelta (Drop-in)', fee: 220 },
+          { name: 'Taller Respiración', fee: 650 },
+        ],
+        clients: [
+          { id: 'cli_1', name: 'Mariana Solís', phone: '5541112233', email: 'mariana@ejemplo.mx', notes: 'Vinyasa 7:00 am' },
+          { id: 'cli_2', name: 'Fernanda Ríos', phone: '5582223344', email: 'fer.rios@ejemplo.mx', notes: 'Hatha 19:00 hrs' },
+          { id: 'cli_3', name: 'Pablo Orozco', phone: '5534445566', email: 'pablo.o@ejemplo.mx', notes: 'Sábados Restaurativo' },
+        ],
+        payments: [
+          { id: 'pi_201', clientId: 'cli_1', concept: 'Paquete 8 Clases Vinyasa', amount: 1100, channel: 'PAYMENT_LINK', status: 'PENDING_PAYMENT', reminders: 1, lastReminder: 'Ayer', date: '14 Nov' },
+          { id: 'pi_202', clientId: 'cli_2', concept: 'Taller Respiración', amount: 650, channel: 'CODI_QR', status: 'PENDING_PAYMENT', reminders: 0, lastReminder: 'Sin enviar', date: '13 Nov' },
+          { id: 'pi_203', clientId: 'cli_3', concept: 'Paquete 8 Clases Vinyasa', amount: 1100, channel: 'PAYMENT_LINK', status: 'SETTLED', reminders: 0, lastReminder: '—', date: '11 Nov' },
+        ]
+      },
+      english: {
+        ownerName: 'David Treviño',
+        businessName: 'SpeakFluently English',
+        profession: 'Maestro de Inglés Privado',
+        sector: 'Educación e Idiomas',
+        taxRegime: 'Persona Física (PFAE)',
+        phone: '5566778899',
+        clabeLast4: '3309',
+        services: [
+          { name: 'Mensualidad Inglés Conversacional', fee: 1400 },
+          { name: 'Preparación TOEFL', fee: 1800 },
+          { name: 'Sesión Entrevista 1-a-1', fee: 500 },
+        ],
+        clients: [
+          { id: 'cli_1', name: 'Roberto Guzmán', phone: '5549998877', email: 'roberto.g@ejemplo.mx', notes: 'Business English' },
+          { id: 'cli_2', name: 'Daniela Pineda', phone: '5581112299', email: 'daniela.p@ejemplo.mx', notes: 'TOEFL' },
+          { id: 'cli_3', name: 'Jorge Salgado', phone: '5537776655', email: 'jorge.s@ejemplo.mx', notes: 'Entrevista Tech' },
+        ],
+        payments: [
+          { id: 'pi_301', clientId: 'cli_1', concept: 'Mensualidad Inglés', amount: 1400, channel: 'PAYMENT_LINK', status: 'PENDING_PAYMENT', reminders: 1, lastReminder: 'Hace 1 día', date: '14 Nov' },
+          { id: 'pi_302', clientId: 'cli_2', concept: 'Preparación TOEFL', amount: 1800, channel: 'CODI_QR', status: 'EXPIRED', reminders: 2, lastReminder: 'Hace 3 días', date: '08 Nov' },
+          { id: 'pi_303', clientId: 'cli_3', concept: 'Sesión Entrevista 1-a-1', amount: 500, channel: 'PAYMENT_LINK', status: 'SETTLED', reminders: 0, lastReminder: '—', date: '12 Nov' },
+        ]
+      }
+    };
+
+    let state = JSON.parse(JSON.stringify(PRESETS.basket));
+    let currentFilter = 'ALL';
+    let selectedChannel = 'PAYMENT_LINK';
+    let activeReminderPaymentId = null;
+
+    function setViewport(mode) {
+      const isMobile = mode === 'mobile';
+      document.body.classList.toggle('viewport-mobile', isMobile);
+      document.getElementById('vp-btn-desktop').className = !isMobile
+        ? 'px-3 py-1 rounded-full bg-[#9BEA73] text-[#163505] font-bold transition flex items-center gap-1'
+        : 'px-3 py-1 rounded-full text-slate-300 hover:text-white font-semibold transition flex items-center gap-1';
+      document.getElementById('vp-btn-mobile').className = isMobile
+        ? 'px-3 py-1 rounded-full bg-[#9BEA73] text-[#163505] font-bold transition flex items-center gap-1'
+        : 'px-3 py-1 rounded-full text-slate-300 hover:text-white font-semibold transition flex items-center gap-1';
+    }
+
+    function formatMxn(amount) {
+      return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
+    }
+
+    function showToast(title, subtitle) {
+      const container = document.getElementById('toast-container');
+      const el = document.createElement('div');
+      el.className = 'pointer-events-auto bg-[#151D2D] text-white p-3.5 rounded-2xl shadow-xl border border-slate-700 flex items-start gap-2.5';
+      el.innerHTML = `
+        <span class="w-5 h-5 rounded-full bg-[#9BEA73] text-[#163505] font-bold flex items-center justify-center text-xs shrink-0">✓</span>
+        <div class="text-xs">
+          <div class="font-bold">${title}</div>
+          <div class="text-slate-300 mt-0.5">${subtitle}</div>
+        </div>
+      `;
+      container.appendChild(el);
+      setTimeout(() => el.remove(), 3800);
+    }
+
+    function applyPreset(key) {
+      state = JSON.parse(JSON.stringify(PRESETS[key]));
+      syncProfileUI();
+      renderDashboard();
+      renderClients();
+      populatePaymentForm();
+      showToast('Perfil cargado', state.businessName);
+    }
+
+    function syncProfileUI() {
+      document.getElementById('header-business-name').textContent = state.businessName;
+      document.getElementById('header-owner-name').textContent = state.ownerName;
+      document.getElementById('header-profession').textContent = state.profession;
+      document.getElementById('header-clabe-last4').textContent = state.clabeLast4;
+      document.getElementById('banner-clabe-last4').textContent = state.clabeLast4;
+      document.getElementById('stat-clabe').textContent = state.clabeLast4;
+      document.getElementById('nav-clients-count').textContent = state.clients.length;
+
+      document.getElementById('prof-owner').textContent = state.ownerName;
+      document.getElementById('prof-business').textContent = state.businessName;
+      document.getElementById('prof-profession').textContent = state.profession;
+      document.getElementById('prof-sector').textContent = state.sector;
+      document.getElementById('prof-regime').textContent = state.taxRegime;
+      document.getElementById('prof-phone').textContent = state.phone;
+      document.getElementById('prof-clabe').textContent = state.clabeLast4;
+
+      if (state.clients[0]) {
+        document.getElementById('banner-first-client').textContent = state.clients[0].name;
+      }
+    }
+
+    function goScreen(screen) {
+      const welcome = document.getElementById('screen-welcome');
+      const onboarding = document.getElementById('screen-onboarding');
+      const appShell = document.getElementById('app-shell');
+
+      welcome.classList.add('hidden');
+      onboarding.classList.add('hidden');
+      appShell.classList.add('hidden');
+
+      ['welcome', 'onboarding', 'dashboard', 'clients', 'payment', 'profile'].forEach(id => {
+        const btn = document.getElementById('proto-btn-' + id);
+        if (btn) {
+          btn.className = id === screen
+            ? 'px-2.5 py-1 rounded-full bg-[#9BEA73] text-[#163505] font-semibold transition whitespace-nowrap'
+            : 'px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 transition whitespace-nowrap';
+        }
+      });
+
+      if (screen === 'welcome') {
+        welcome.classList.remove('hidden');
+        return;
+      }
+      if (screen === 'onboarding') {
+        onboarding.classList.remove('hidden');
+        return;
+      }
+
+      appShell.classList.remove('hidden');
+      ['dashboard', 'clients', 'payment', 'profile'].forEach(v => {
+        document.getElementById('view-' + v).classList.toggle('hidden', v !== screen);
+        const navBtn = document.getElementById('nav-' + v);
+        if (navBtn) {
+          navBtn.className = v === screen
+            ? 'px-4 py-1.5 rounded-full bg-white text-slate-900 shadow-xs transition'
+            : 'px-4 py-1.5 rounded-full text-slate-600 hover:text-slate-900 transition';
+        }
+        const mnavBtn = document.getElementById('mnav-' + v);
+        if (mnavBtn && v !== 'payment') {
+          mnavBtn.className = v === screen
+            ? 'flex flex-col items-center gap-0.5 text-[#151D2D] font-bold'
+            : 'flex flex-col items-center gap-0.5 text-slate-500';
+        }
+      });
+
+      if (screen === 'dashboard') renderDashboard();
+      if (screen === 'clients') renderClients();
+      if (screen === 'payment') populatePaymentForm();
+    }
+
+    function updateClabePreview(val) {
+      const clean = val.replace(/\D/g, '');
+      document.getElementById('ob-clabe-preview').textContent = clean.length >= 4 ? clean.slice(-4) : '0000';
+    }
+
+    function submitOnboarding(e) {
+      e.preventDefault();
+      state.ownerName = document.getElementById('ob-owner').value.trim();
+      state.businessName = document.getElementById('ob-business').value.trim();
+      state.profession = document.getElementById('ob-profession').value.trim();
+      state.sector = document.getElementById('ob-sector').value;
+      state.taxRegime = document.getElementById('ob-regime').value;
+      state.phone = document.getElementById('ob-phone').value.trim();
+      const clabe = document.getElementById('ob-clabe').value.trim();
+      state.clabeLast4 = clabe.slice(-4);
+
+      const cName = document.getElementById('ob-client-name').value.trim();
+      const cPhone = document.getElementById('ob-client-phone').value.trim();
+      const cEmail = document.getElementById('ob-client-email').value.trim();
+      if (cName && !state.clients.some(c => c.name.toLowerCase() === cName.toLowerCase())) {
+        state.clients.unshift({
+          id: 'cli_' + Date.now(),
+          name: cName,
+          phone: cPhone || '5500000000',
+          email: cEmail || 'cliente@ejemplo.mx',
+          notes: 'Registrado en Onboarding'
+        });
+      }
+
+      syncProfileUI();
+      goScreen('dashboard');
+      openFirstChargeGuide();
+      showToast('Onboarding completado', `CLABE •••• ${state.clabeLast4} lista.`);
+    }
+
+    function openFirstChargeGuide() {
+      goScreen('dashboard');
+      document.getElementById('first-charge-banner').classList.remove('hidden');
+    }
+
+    function closeFirstChargeGuide() {
+      document.getElementById('first-charge-banner').classList.add('hidden');
+    }
+
+    function quickFirstCharge(via) {
+      const firstClient = state.clients[0];
+      openNewPaymentForClient(firstClient ? firstClient.id : null, 'PAYMENT_LINK');
+      showToast(via === 'whatsapp' ? '1.er Cobro WhatsApp' : '1.er Cobro Correo', 'Confirma y toca Generar Cobro.');
+    }
+
+    function getClient(clientId) {
+      return state.clients.find(c => c.id === clientId) || { name: 'Cliente General', phone: '5500000000', email: 'cliente@correo.mx', notes: '' };
+    }
+
+    function channelLabel(ch) {
+      if (ch === 'PAYMENT_LINK') return '🔗 Link';
+      return '🏁 QR CoDi';
+    }
+
+    function statusBadgeHtml(status) {
+      if (status === 'SETTLED') {
+        return `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200"><span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>✓ Pagado</span>`;
+      }
+      if (status === 'EXPIRED') {
+        return `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200"><span class="w-1.5 h-1.5 rounded-full bg-rose-600"></span>⚠ Vencido</span>`;
+      }
+      return `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>⏳ Pendiente</span>`;
+    }
+
+    function setFilter(filter) {
+      currentFilter = filter;
+      ['ALL', 'PENDING_PAYMENT', 'SETTLED', 'EXPIRED'].forEach(f => {
+        const btn = document.getElementById('filter-' + f);
+        if (btn) {
+          btn.className = f === filter
+            ? 'px-3 py-1.5 rounded-full bg-[#151D2D] text-white whitespace-nowrap transition'
+            : 'px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 hover:text-slate-900 whitespace-nowrap transition';
+        }
+      });
+      renderDashboard();
+    }
+
+    function renderDashboard() {
+      const settled = state.payments.filter(p => p.status === 'SETTLED');
+      const unpaid = state.payments.filter(p => p.status !== 'SETTLED');
+      const settledSum = settled.reduce((acc, p) => acc + p.amount, 0);
+      const unpaidSum = unpaid.reduce((acc, p) => acc + p.amount, 0);
+      const unpaidClients = new Set(unpaid.map(p => p.clientId)).size;
+
+      document.getElementById('stat-settled-amount').textContent = formatMxn(settledSum);
+      document.getElementById('stat-settled-count').textContent = settled.length;
+      document.getElementById('stat-pending-amount').textContent = formatMxn(unpaidSum);
+      document.getElementById('stat-pending-badge').textContent = `${unpaid.length} pend.`;
+      document.getElementById('stat-pending-clients').textContent = unpaidClients;
+
+      document.getElementById('count-ALL').textContent = state.payments.length;
+      document.getElementById('count-PENDING_PAYMENT').textContent = state.payments.filter(p => p.status === 'PENDING_PAYMENT').length;
+      document.getElementById('count-SETTLED').textContent = settled.length;
+      document.getElementById('count-EXPIRED').textContent = state.payments.filter(p => p.status === 'EXPIRED').length;
+
+      const query = (document.getElementById('search-input')?.value || '').toLowerCase().trim();
+      const filtered = state.payments.filter(p => {
+        const matchesStatus = currentFilter === 'ALL' || p.status === currentFilter;
+        const client = getClient(p.clientId);
+        const matchesQuery = !query || client.name.toLowerCase().includes(query) || p.concept.toLowerCase().includes(query);
+        return matchesStatus && matchesQuery;
+      });
+
+      const tbody = document.getElementById('payments-table-body');
+      const mobileList = document.getElementById('payments-mobile-list');
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="py-10 text-center text-slate-400 text-sm">No hay cobros con este filtro.</td></tr>`;
+        mobileList.innerHTML = `<div class="p-8 text-center text-slate-400 text-xs">No hay cobros con este filtro.</div>`;
+        return;
+      }
+
+      // 1. Filas para Desktop
+      tbody.innerHTML = filtered.map(p => {
+        const c = getClient(p.clientId);
+        const isSettled = p.status === 'SETTLED';
+        return `
+          <tr class="hover:bg-slate-50/80 transition">
+            <td class="py-3 px-5">
+              <div class="font-bold text-slate-900">${c.name}</div>
+              <div class="text-xs text-slate-500 tabular">📱 ${c.phone} · ${c.email}</div>
+            </td>
+            <td class="py-3 px-4">
+              <div class="font-semibold text-slate-800">${p.concept}</div>
+              <div class="text-xs text-slate-500">${channelLabel(p.channel)} · ${p.date}</div>
+            </td>
+            <td class="py-3 px-4 text-right font-extrabold text-slate-900 tabular">${formatMxn(p.amount)}</td>
+            <td class="py-3 px-4">${statusBadgeHtml(p.status)}</td>
+            <td class="py-3 px-4 text-xs text-slate-500">
+              <div class="font-medium text-slate-700">${p.reminders} env.</div>
+              <div class="text-[11px]">${p.lastReminder}</div>
+            </td>
+            <td class="py-3 px-5 text-right">
+              ${isSettled ? `<span class="text-xs text-emerald-700 font-semibold">Liquidado ✓</span>` : `
+                <div class="inline-flex items-center gap-1.5">
+                  <button onclick="openReminderModal('${p.id}')" class="px-2.5 py-1 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 font-semibold text-xs">🔔 Recordar</button>
+                  <button onclick="openNewPaymentForClient('${p.clientId}', 'CODI_QR')" class="px-2.5 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs">🏁 QR</button>
+                  <button onclick="markPaymentSettled('${p.id}')" class="px-2.5 py-1 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-semibold text-xs">⚡ Pagar</button>
+                </div>
+              `}
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      // 2. Tarjetas compactas para Móvil
+      mobileList.innerHTML = filtered.map(p => {
+        const c = getClient(p.clientId);
+        const isSettled = p.status === 'SETTLED';
+        return `
+          <div class="p-4 space-y-2.5">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <div class="font-bold text-slate-900 text-sm">${c.name}</div>
+                <div class="text-xs text-slate-600">${p.concept}</div>
+                <div class="text-[11px] text-slate-400 mt-0.5">${channelLabel(p.channel)} · 📱 ${c.phone} · ${p.reminders} recordatorios</div>
+              </div>
+              <div class="text-right shrink-0">
+                <div class="font-extrabold text-slate-900 text-base tabular">${formatMxn(p.amount)}</div>
+                <div class="mt-1">${statusBadgeHtml(p.status)}</div>
+              </div>
+            </div>
+            ${!isSettled ? `
+              <div class="grid grid-cols-3 gap-1.5 pt-1 text-xs font-semibold">
+                <button onclick="openReminderModal('${p.id}')" class="py-1.5 px-2 rounded-xl bg-amber-50 text-amber-900 border border-amber-200 text-center">🔔 Recordar</button>
+                <button onclick="openNewPaymentForClient('${p.clientId}', 'CODI_QR')" class="py-1.5 px-2 rounded-xl bg-slate-100 text-slate-800 text-center">🏁 QR</button>
+                <button onclick="markPaymentSettled('${p.id}')" class="py-1.5 px-2 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-center">⚡ Pagar</button>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderClients() {
+      const grid = document.getElementById('clients-grid');
+      grid.innerHTML = state.clients.map(c => {
+        const clientPayments = state.payments.filter(p => p.clientId === c.id);
+        const pendingSum = clientPayments.filter(p => p.status !== 'SETTLED').reduce((acc, p) => acc + p.amount, 0);
+        const settledSum = clientPayments.filter(p => p.status === 'SETTLED').reduce((acc, p) => acc + p.amount, 0);
+        const hasDebt = pendingSum > 0;
+
+        return `
+          <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs flex flex-col justify-between space-y-3">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <h3 class="font-extrabold text-slate-900 text-sm">${c.name}</h3>
+                <p class="text-[11px] text-slate-500">${c.notes || 'Cliente activo'}</p>
+              </div>
+              ${hasDebt
+                ? `<span class="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-bold">Debe ${formatMxn(pendingSum)}</span>`
+                : `<span class="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold">✓ Al día</span>`
+              }
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 bg-[#F4FCFC] rounded-xl p-2.5 border border-slate-200/70 text-xs">
+              <div>
+                <div class="text-slate-500 text-[11px]">Por cobrar</div>
+                <div class="font-extrabold text-sm tabular ${hasDebt ? 'text-amber-700' : 'text-slate-900'}">${formatMxn(pendingSum)}</div>
+              </div>
+              <div>
+                <div class="text-slate-500 text-[11px]">Pagado</div>
+                <div class="font-extrabold text-sm text-emerald-700 tabular">${formatMxn(settledSum)}</div>
+              </div>
+            </div>
+
+            <div class="text-[11px] text-slate-600 tabular">📱 ${c.phone} · ✉️ ${c.email}</div>
+
+            <div class="flex items-center gap-2 pt-1">
+              <button onclick="openNewPaymentForClient('${c.id}', 'PAYMENT_LINK')" class="flex-1 py-2 rounded-full bg-[#151D2D] text-white font-bold text-xs">
+                + Cobrar Link
+              </button>
+              <button onclick="openNewPaymentForClient('${c.id}', 'CODI_QR')" class="px-3 py-2 rounded-full bg-slate-100 text-slate-800 font-semibold text-xs">
+                🏁 QR CoDi
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function populatePaymentForm(preselectedClientId) {
+      const sel = document.getElementById('pay-client-select');
+      sel.innerHTML = state.clients.map(c => `<option value="${c.id}">${c.name} (${c.phone})</option>`).join('');
+      if (preselectedClientId) sel.value = preselectedClientId;
+
+      const chips = document.getElementById('service-chips');
+      chips.innerHTML = state.services.map(s => `
+        <button type="button" onclick="selectServiceChip('${s.name}', ${s.fee})" class="px-2.5 py-1 rounded-full bg-slate-100 hover:bg-indigo-50 border border-slate-200 text-[11px] font-semibold">
+          ${s.name} · $${s.fee}
+        </button>
+      `).join('');
+
+      updatePaymentPreview();
+    }
+
+    function selectServiceChip(name, fee) {
+      document.getElementById('pay-concept').value = name;
+      document.getElementById('pay-amount').value = fee;
+      updatePaymentPreview();
+    }
+
+    function selectChannel(ch) {
+      selectedChannel = ch;
+      ['PAYMENT_LINK', 'CODI_QR'].forEach(id => {
+        const btn = document.getElementById('ch-btn-' + id);
+        if (btn) {
+          btn.className = id === ch
+            ? 'p-2.5 rounded-2xl border-2 border-[#151D2D] bg-[#F4FCFC] text-center transition'
+            : 'p-2.5 rounded-2xl border border-slate-200 bg-white text-center transition';
+        }
+      });
+      updatePaymentPreview();
+    }
+
+    function updatePaymentPreview() {
+      const clientId = document.getElementById('pay-client-select')?.value || state.clients[0]?.id;
+      const client = getClient(clientId);
+      const concept = document.getElementById('pay-concept')?.value || 'Servicio';
+      const amount = Number(document.getElementById('pay-amount')?.value || 0);
+      const container = document.getElementById('channel-preview-container');
+      const linkUrl = `https://pey.mx/l/praxis-${clientId.slice(-3)}-${amount}`;
+      const waText = encodeURIComponent(`Hola ${client.name}, te comparto el link de pago por ${formatMxn(amount)} (${concept} - ${state.businessName}): ${linkUrl}`);
+
+      if (selectedChannel === 'PAYMENT_LINK') {
+        container.innerHTML = `
+          <div class="space-y-3">
+            <div class="text-xs font-bold uppercase text-[#5170AD]">Link Payments (Share / SS / Message)</div>
+            <div class="rounded-2xl bg-[#151D2D] text-white p-4 space-y-2 shadow-md">
+              <div class="flex justify-between text-[11px] text-slate-300">
+                <span>${state.businessName}</span>
+                <span>•••• ${state.clabeLast4}</span>
+              </div>
+              <div class="text-sm font-bold">${concept} · ${client.name}</div>
+              <div class="text-2xl font-extrabold text-[#9BEA73] tabular">${formatMxn(amount)}</div>
+              <div class="p-2 rounded-lg bg-white/10 text-[11px] font-mono truncate">${linkUrl}</div>
+            </div>
+            <div class="space-y-2 text-xs font-bold">
+              <a href="https://wa.me/52${client.phone}?text=${waText}" target="_blank" class="w-full py-2.5 rounded-xl bg-[#9BEA73] text-[#163505] flex items-center justify-center gap-1.5">
+                <span>💬</span><span>Enviar por WhatsApp</span>
+              </a>
+              <button type="button" onclick="navigator.clipboard?.writeText('${linkUrl}'); showToast('Link copiado', '${linkUrl}')" class="w-full py-2 rounded-xl border border-slate-300 text-slate-700">
+                📋 Copiar Link
+              </button>
+            </div>
+          </div>
+        `;
+      } else {
+        container.innerHTML = `
+          <div class="space-y-3 text-center">
+            <div class="text-xs font-bold uppercase text-slate-700">QR Payments UI (POST /codi/qr)</div>
+            <div class="p-4 rounded-2xl bg-[#F4FCFC] border border-slate-200 space-y-2">
+              <div class="text-2xl font-extrabold text-slate-900 tabular">${formatMxn(amount)}</div>
+              <div class="text-xs text-slate-600">${concept} · ${client.name}</div>
+              <div class="w-36 h-36 mx-auto bg-white p-2.5 rounded-xl border border-slate-200 flex items-center justify-center">
+                <svg viewBox="0 0 120 120" class="w-full h-full fill-[#151D2D]">
+                  <rect x="8" y="8" width="32" height="32" rx="4" fill="none" stroke="#151D2D" stroke-width="6"/>
+                  <rect x="18" y="18" width="12" height="12" rx="2"/>
+                  <rect x="80" y="8" width="32" height="32" rx="4" fill="none" stroke="#151D2D" stroke-width="6"/>
+                  <rect x="90" y="18" width="12" height="12" rx="2"/>
+                  <rect x="8" y="80" width="32" height="32" rx="4" fill="none" stroke="#151D2D" stroke-width="6"/>
+                  <rect x="18" y="90" width="12" height="12" rx="2"/>
+                  <rect x="48" y="48" width="24" height="24" rx="4"/>
+                  <rect x="52" y="84" width="16" height="8"/><rect x="78" y="78" width="12" height="12"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    function openNewPaymentForClient(clientId, channel) {
+      goScreen('payment');
+      if (clientId) document.getElementById('pay-client-select').value = clientId;
+      if (channel) selectChannel(channel);
+      else updatePaymentPreview();
+    }
+
+    function createAndSendPaymentIntent() {
+      const clientId = document.getElementById('pay-client-select').value;
+      const client = getClient(clientId);
+      const concept = document.getElementById('pay-concept').value.trim() || 'Servicio';
+      const amount = Number(document.getElementById('pay-amount').value || 0);
+      if (amount <= 0) return;
+
+      state.payments.unshift({
+        id: 'pi_' + Date.now(),
+        clientId,
+        concept,
+        amount,
+        channel: selectedChannel,
+        status: 'PENDING_PAYMENT',
+        reminders: 0,
+        lastReminder: 'Enviado hoy',
+        date: '14 Nov'
+      });
+      goScreen('dashboard');
+      setFilter('ALL');
+      showToast('Cobro creado', `${formatMxn(amount)} para ${client.name}`);
+    }
+
+    function markPaymentSettled(paymentId) {
+      const p = state.payments.find(item => item.id === paymentId);
+      if (!p) return;
+      p.status = 'SETTLED';
+      p.lastReminder = 'Liquidado webhook pey';
+      const c = getClient(p.clientId);
+      renderDashboard();
+      renderClients();
+      showToast('Pago acreditado', `${formatMxn(p.amount)} de ${c.name} en •••• ${state.clabeLast4}`);
+    }
+
+    function simulateNextWebhook() {
+      const nextPending = state.payments.find(p => p.status !== 'SETTLED');
+      if (!nextPending) {
+        showToast('Todo cobrado', 'No quedan cobros pendientes.');
+        return;
+      }
+      markPaymentSettled(nextPending.id);
+    }
+
+    function openReminderModal(paymentId) {
+      activeReminderPaymentId = paymentId;
+      const p = state.payments.find(item => item.id === paymentId);
+      if (!p) return;
+      const c = getClient(p.clientId);
+      document.getElementById('rem-modal-title').textContent = `Recordatorio para ${c.name}`;
+      document.getElementById('rem-modal-text').value =
+        `Hola ${c.name} 👋, te recuerdo tu pago pendiente de ${formatMxn(p.amount)} por "${p.concept}" en ${state.businessName}. Liquídalo sin comisión aquí: https://pey.mx/l/${p.id}`;
+      document.getElementById('reminder-modal').classList.remove('hidden');
+    }
+
+    function closeReminderModal() {
+      document.getElementById('reminder-modal').classList.add('hidden');
+    }
+
+    function confirmSendReminder(channelName) {
+      const p = state.payments.find(item => item.id === activeReminderPaymentId);
+      if (p) {
+        p.reminders += 1;
+        p.lastReminder = `Hoy vía ${channelName}`;
+        const c = getClient(p.clientId);
+        showToast(`Recordatorio enviado (${channelName})`, `A ${c.name} por ${formatMxn(p.amount)}`);
+      }
+      closeReminderModal();
+      renderDashboard();
+    }
+
+    function sendBulkReminders() {
+      const pending = state.payments.filter(p => p.status !== 'SETTLED');
+      if (!pending.length) {
+        showToast('Sin pendientes', 'Todos están al corriente.');
+        return;
+      }
+      pending.forEach(p => {
+        p.reminders += 1;
+        p.lastReminder = 'Recordatorio masivo hoy';
+      });
+      renderDashboard();
+      showToast('Recordatorios enviados', `Se notificó a ${pending.length} clientes.`);
+    }
+
+    function openAddClientModal() {
+      document.getElementById('add-client-modal').classList.remove('hidden');
+    }
+
+    function closeAddClientModal() {
+      document.getElementById('add-client-modal').classList.add('hidden');
+    }
+
+    function submitNewClient(e) {
+      e.preventDefault();
+      const name = document.getElementById('new-client-name').value.trim();
+      const phone = document.getElementById('new-client-phone').value.trim();
+      const email = document.getElementById('new-client-email').value.trim() || 'cliente@correo.mx';
+      const notes = document.getElementById('new-client-notes').value.trim();
+
+      const newClient = { id: 'cli_' + Date.now(), name, phone, email, notes };
+      state.clients.unshift(newClient);
+      e.target.reset();
+      closeAddClientModal();
+      syncProfileUI();
+      renderClients();
+      populatePaymentForm(newClient.id);
+      showToast('Cliente agregado', name);
+    }
+
+    function toggleAssistant(open) {
+      document.getElementById('assistant-drawer').classList.toggle('hidden', !open);
+    }
+
+    function runAssistantPrompt(type) {
+      const out = document.getElementById('assistant-output');
+      const firstClient = state.clients[0];
+      const defaultService = state.services[0];
+
+      if (type === 'charge') {
+        out.innerHTML = `
+          <div class="font-bold text-slate-900">Borrador propuesto (<code class="text-[11px] bg-white px-1 rounded">intentDraft</code>):</div>
+          <div class="p-2.5 rounded-xl bg-white border border-slate-200 space-y-1">
+            <div>👤 <strong>${firstClient.name}</strong></div>
+            <div>🏷️ ${defaultService.name} · <strong class="tabular">${formatMxn(defaultService.fee)}</strong></div>
+          </div>
+          <button onclick="confirmAssistantDraft('${firstClient.id}', '${defaultService.name}', ${defaultService.fee})" class="w-full py-2 rounded-full bg-[#9BEA73] text-[#163505] font-bold">
+            ✓ Confirmar y crear cobro
+          </button>
+        `;
+      } else if (type === 'debtors') {
+        const unpaid = state.payments.filter(p => p.status !== 'SETTLED');
+        const total = unpaid.reduce((a, b) => a + b.amount, 0);
+        out.innerHTML = `
+          <div class="font-bold text-slate-900">${unpaid.length} pendientes (${formatMxn(total)}):</div>
+          <ul class="space-y-1 text-slate-600">
+            ${unpaid.map(p => `<li>• <strong>${getClient(p.clientId).name}</strong>: ${formatMxn(p.amount)}</li>`).join('')}
+          </ul>
+        `;
+      } else {
+        const target = state.payments.find(p => p.status !== 'SETTLED') || state.payments[0];
+        const c = getClient(target.clientId);
+        out.innerHTML = `
+          <div class="font-bold text-slate-900">Recordatorio para ${c.name}:</div>
+          <button onclick="toggleAssistant(false); openReminderModal('${target.id}')" class="w-full py-2 rounded-full bg-amber-500 text-white font-bold">
+            Abrir envío de recordatorio
+          </button>
+        `;
+      }
+    }
+
+    function confirmAssistantDraft(clientId, concept, amount) {
+      state.payments.unshift({
+        id: 'pi_' + Date.now(),
+        clientId,
+        concept,
+        amount,
+        channel: 'PAYMENT_LINK',
+        status: 'PENDING_PAYMENT',
+        reminders: 0,
+        lastReminder: 'Asistente IA',
+        date: '14 Nov'
+      });
+      toggleAssistant(false);
+      goScreen('dashboard');
+      showToast('Cobro creado con IA', `${formatMxn(amount)} agregado.`);
+    }
+
+    function submitCustomAssistant(e) {
+      e.preventDefault();
+      document.getElementById('assistant-input').value = '';
+      runAssistantPrompt('charge');
+    }
+
+    syncProfileUI();
+    renderDashboard();
+    renderClients();
+    populatePaymentForm();
+  </script>
+</body>
+</html>

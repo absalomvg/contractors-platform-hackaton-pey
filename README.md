@@ -81,7 +81,7 @@ Después de compilar, `npm run start -w @platform/backend` inicia la API. Admite
 
 El frontend compilado queda en `apps/frontend/dist`. En producción, el servidor web debe servir esos archivos y redirigir `/api` al backend; el proxy de Vite solo funciona en desarrollo. `npm run preview -w @platform/frontend` únicamente permite inspeccionar los archivos compilados.
 
-Consulta [las reglas de arquitectura](docs/architecture.md), el [flujo funcional de cobros y recordatorios](docs/workflow.md) y la [referencia de integración con `api.pey.mx` (Payment Links y CoDi QR)](docs/pey-api.md) antes de agregar módulos.
+Consulta [las reglas de arquitectura](docs/architecture.md), el [flujo funcional de cobros y recordatorios](docs/workflow.md), el [diagrama interactivo de workflow](docs/FLUJO_WORKFLOW.html), el [prototipo funcional Desktop/Móvil](docs/prototipo/index.html) y la [referencia de integración con `api.pey.mx` (Payment Links y CoDi QR)](docs/pey-api.md) antes de agregar módulos.
 
 ## Contrato de onboarding
 
