@@ -19,6 +19,27 @@ npm run dev
 
 Vite redirige `/api` al backend durante desarrollo. El formulario de onboarding crea y consulta registros en memoria. El listado de contratistas es una colección vacía de arranque. No incluye autenticación ni persistencia.
 
+## Docker
+
+Alternativa a instalar Go y Node: requiere Docker con Compose v2.
+
+```bash
+npm run docker:up      # o: docker compose up --build
+npm run docker:down    # o: docker compose down
+```
+
+- Frontend (Vite con recarga en caliente): http://localhost:5173
+- Backend: http://localhost:3001/api/health
+
+El código se monta como volumen, así que los cambios del frontend se recargan solos. El backend corre con `go run`; tras cambios Go ejecuta `docker compose restart backend`. Si esos puertos están ocupados, cámbialos con `FRONTEND_PORT`, `BACKEND_PORT`, `API_PORT` o `WEB_PORT` (p. ej. `FRONTEND_PORT=5174 docker compose up`). Las dependencias de Node y los cachés de Go viven en volúmenes de Docker (no se mezclan con el `node_modules` del host). Si cambias `package.json`, ejecuta `docker compose down -v` y vuelve a levantar. Dentro de Compose el proxy de Vite apunta al servicio `backend` mediante `VITE_API_PROXY_TARGET`; sin Docker usa `http://127.0.0.1:3001`.
+
+Perfil prod-like, con el frontend compilado en nginx (SPA y proxy `/api`) y la imagen de producción de la API:
+
+```bash
+npm run docker:prod    # web en http://localhost:8081, API en http://localhost:8080
+docker compose --profile prod down
+```
+
 ## Estructura
 
 ```text

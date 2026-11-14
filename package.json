@@ -16,6 +16,9 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "check": "npm run typecheck && npm test && npm run build",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down",
+    "docker:prod": "docker compose --profile prod up --build",
     "dev:edge": "npm run build -w @platform/frontend && npm run dev -w @platform/edge",
     "deploy:dry-run": "npm run deploy:dry-run -w @platform/edge",
     "deploy": "npm run deploy -w @platform/edge"

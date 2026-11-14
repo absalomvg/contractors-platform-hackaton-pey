@@ -1,0 +1,70 @@
+# Desarrollo local:   docker compose up --build
+# Prod-like (nginx):  docker compose --profile prod up --build
+name: contractors-platform
+
+services:
+  backend:
+    image: golang:1.24-alpine
+    working_dir: /src/apps/backend
+    command: go run ./cmd/api
+    environment:
+      HOST: 0.0.0.0
+      PORT: "3001"
+    ports:
+      - "${BACKEND_PORT:-3001}:3001"
+    volumes:
+      - ./apps/backend:/src/apps/backend
+      - go-cache:/go
+      - go-build-cache:/root/.cache/go-build
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+      target: dev
+    environment:
+      VITE_API_PROXY_TARGET: http://backend:3001
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./apps/frontend:/app/apps/frontend
+      - ./packages/contracts:/app/packages/contracts
+      # Las dependencias de Linux viven en volúmenes, no en el host (macOS).
+      - frontend-node-modules:/app/node_modules
+      - frontend-app-node-modules:/app/apps/frontend/node_modules
+
+  # --- Perfil prod: imagen de producción de la API + nginx con el build ---
+  api:
+    profiles: [prod]
+    build:
+      context: apps/backend
+    ports:
+      - "${API_PORT:-8080}:8080"
+
+  web:
+    profiles: [prod]
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+      target: prod
+    environment:
+      API_UPSTREAM: http://api:8080
+    ports:
+      - "${WEB_PORT:-8081}:80"
+    depends_on:
+      - api
+
+volumes:
+  go-cache:
+  go-build-cache:
+  frontend-node-modules:
+  frontend-app-node-modules:
