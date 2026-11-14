@@ -22,12 +22,12 @@ func TestNewProfileTaxpayerType(t *testing.T) {
 
 func TestNewProfileOnboardingStatus(t *testing.T) {
 	regime := "General"
-	complete := NewProfile(Contractor{TaxRegime: &regime}).Onboarding
+	complete := NewProfile(Contractor{TaxRegime: &regime, CLABE: "002010077777777771"}).Onboarding
 	if complete.Status != OnboardingStatusComplete || len(complete.PendingFields) != 0 || complete.PendingFields == nil {
 		t.Fatalf("complete: %+v", complete)
 	}
 	incomplete := NewProfile(Contractor{}).Onboarding
-	if incomplete.Status != OnboardingStatusIncomplete || !slices.Equal(incomplete.PendingFields, []Field{FieldTaxRegime}) {
+	if incomplete.Status != OnboardingStatusIncomplete || !slices.Equal(incomplete.PendingFields, []Field{FieldTaxRegime, FieldClabe}) {
 		t.Fatalf("incomplete: %+v", incomplete)
 	}
 }
@@ -38,5 +38,14 @@ func TestNewProfileCopiesTaxRegime(t *testing.T) {
 	regime = "changed"
 	if *dashboard.Business.TaxRegime != "General" {
 		t.Fatal("tax regime shares memory with the source client")
+	}
+}
+
+func TestNewProfileMasksClabe(t *testing.T) {
+	if got := NewProfile(Contractor{CLABE: "002010077777777771"}).Business.ClabeLast4; got == nil || *got != "7771" {
+		t.Fatalf("got %v", got)
+	}
+	if got := NewProfile(Contractor{}).Business.ClabeLast4; got != nil {
+		t.Fatalf("legacy record without CLABE: got %q", *got)
 	}
 }

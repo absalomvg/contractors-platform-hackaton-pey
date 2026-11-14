@@ -91,7 +91,7 @@ export interface ApiErrorResponse {
 
 export type TaxpayerType = 'individual' | 'company' | 'unknown';
 export type OnboardingStatus = 'complete' | 'incomplete';
-export type OnboardingField = 'taxRegime';
+export type OnboardingField = 'taxRegime' | 'clabe';
 /** codi/card come from pey; cash/transfer/other are recorded by the business. */
 export type PaymentMethod = 'codi' | 'card' | 'cash' | 'transfer' | 'other';
 export type ManualPaymentMethod = Extract<PaymentMethod, 'cash' | 'transfer' | 'other'>;
@@ -142,9 +142,11 @@ export interface DashboardProfileDto {
     rfc: string;
     taxRegime?: string;
     taxpayerType: TaxpayerType;
+    /** Last 4 digits of the deposit CLABE; null when not captured yet. */
+    clabeLast4: string | null;
   };
-  /** Contact captured in onboarding (`client`). */
-  contact: { name: string; phone: string; email: string };
+  /** Customer captured in onboarding (`client`): receives the first charge. */
+  firstCustomer: { name: string; phone: string; email: string };
   onboarding: { status: OnboardingStatus; pendingFields: OnboardingField[] };
 }
 

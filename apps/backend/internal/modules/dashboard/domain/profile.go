@@ -40,7 +40,14 @@ const (
 // JSON names of the onboarding contract.
 type Field string
 
-const FieldTaxRegime Field = "taxRegime"
+const (
+	FieldTaxRegime Field = "taxRegime"
+	// FieldClabe is pending only for records created before CLABE was required.
+	FieldClabe Field = "clabe"
+)
+
+// ClabeVisibleDigits is how many trailing CLABE digits the dashboard shows.
+const ClabeVisibleDigits = 4
 
 // Contractor is the data the profile needs, independent of its origin.
 type Contractor struct {
@@ -51,10 +58,13 @@ type Contractor struct {
 	BusinessActivity string
 	RFC              string
 	TaxRegime        *string
-	Contact          Contact
+	CLABE            string
+	FirstCustomer    FirstCustomer
 }
 
-type Contact struct {
+// FirstCustomer is the customer captured during onboarding (`client`): the
+// person who receives the business's first charge.
+type FirstCustomer struct {
 	Name  string
 	Phone string
 	Email string
@@ -69,12 +79,12 @@ type ProfileSource interface {
 // Profile is the dashboard header: who the contractor is and what is missing
 // from their onboarding.
 type Profile struct {
-	ContractorID string
-	Name         string
-	Profession   string
-	Business     Business
-	Contact      Contact
-	Onboarding   OnboardingSummary
+	ContractorID  string
+	Name          string
+	Profession    string
+	Business      Business
+	FirstCustomer FirstCustomer
+	Onboarding    OnboardingSummary
 }
 
 type Business struct {
@@ -83,6 +93,8 @@ type Business struct {
 	RFC          string
 	TaxRegime    *string
 	TaxpayerType TaxpayerType
+	// ClabeLast4 masks the deposit account; nil when no CLABE is on file.
+	ClabeLast4 *string
 }
 
 type OnboardingSummary struct {
@@ -107,9 +119,10 @@ func NewProfile(contractor Contractor) Profile {
 			RFC:          contractor.RFC,
 			TaxRegime:    copyString(contractor.TaxRegime),
 			TaxpayerType: taxpayerTypeFromRFC(contractor.RFC),
+			ClabeLast4:   clabeLast4(contractor.CLABE),
 		},
-		Contact:    contractor.Contact,
-		Onboarding: OnboardingSummary{Status: status, PendingFields: pending},
+		FirstCustomer: contractor.FirstCustomer,
+		Onboarding:    OnboardingSummary{Status: status, PendingFields: pending},
 	}
 }
 
@@ -118,7 +131,18 @@ func pendingFields(contractor Contractor) []Field {
 	if contractor.TaxRegime == nil {
 		pending = append(pending, FieldTaxRegime)
 	}
+	if contractor.CLABE == "" {
+		pending = append(pending, FieldClabe)
+	}
 	return pending
+}
+
+func clabeLast4(clabe string) *string {
+	if len(clabe) < ClabeVisibleDigits {
+		return nil
+	}
+	last := clabe[len(clabe)-ClabeVisibleDigits:]
+	return &last
 }
 
 func taxpayerTypeFromRFC(rfc string) TaxpayerType {
