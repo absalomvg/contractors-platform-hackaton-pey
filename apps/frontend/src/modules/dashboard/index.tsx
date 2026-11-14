@@ -1,15 +1,15 @@
 import type { DashboardGateway } from './application/dashboard-gateway';
 import { httpDashboardGateway } from './infrastructure/http-dashboard-gateway';
-import { createMockDashboard, mockCustomers } from './infrastructure/mock-dashboard-gateway';
+import { createMockDashboard } from './infrastructure/mock-dashboard-gateway';
 import { DashboardWorkspace as Workspace } from './presentation/DashboardWorkspace';
 
 const mock = createMockDashboard();
-const customerPhones = Object.fromEntries(mockCustomers().map((customer) => [customer.customerId, customer.phone]));
 
 /**
- * The backend implements only GET /profile today. The rest of the dashboard
- * contract is served by the in-memory mock (5 sample charges) until the charges
- * module exists; swap each method for httpDashboardGateway as it ships.
+ * The backend implements only GET /profile today. The rest of the dashboard,
+ * customers directory, and payments contract runs on the persistent local
+ * adapter synced with the onboarding `firstCustomer`; swap each method for
+ * httpDashboardGateway as backend modules ship.
  */
 const gateway: DashboardGateway = { ...mock, profile: httpDashboardGateway.profile };
 
@@ -25,9 +25,9 @@ export function DashboardWorkspace({ contractorId, onNotFound, onSignOut }: Dash
     <Workspace
       gateway={gateway}
       payments={mock}
+      customersDirectory={mock}
       demo={mock}
       contractorId={contractorId}
-      customerPhones={customerPhones}
       onNotFound={onNotFound}
       onSignOut={onSignOut}
     />
