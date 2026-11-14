@@ -22,16 +22,8 @@ func NewMemoryRepository() *MemoryRepository {
 }
 
 func cloneUser(user domain.User) domain.User {
-	user.TaxRegime = copyText(user.TaxRegime)
+	user.TaxRegime = domain.CopyText(user.TaxRegime)
 	return user
-}
-
-func copyText(value *string) *string {
-	if value == nil {
-		return nil
-	}
-	copy := *value
-	return &copy
 }
 
 // Save persiste el usuario si el contrato lo permite y le asigna un id.

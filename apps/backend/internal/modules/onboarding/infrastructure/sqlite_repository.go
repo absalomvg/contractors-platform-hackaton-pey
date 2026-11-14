@@ -1,7 +1,6 @@
 package infrastructure
 
 import (
-	"contractors-platform/backend/internal/modules/onboarding/definitions"
 	"contractors-platform/backend/internal/modules/onboarding/domain"
 	"crypto/rand"
 	"database/sql"
@@ -23,7 +22,7 @@ CREATE TABLE IF NOT EXISTS onboardings (
 	business_name     TEXT NOT NULL,
 	business_activity TEXT NOT NULL,
 	rfc               TEXT NOT NULL,
-	codi_status       TEXT NOT NULL DEFAULT '` + definitions.CodiNotRegistered + `',
+	codi_status       TEXT NOT NULL DEFAULT '` + domain.NotRegisteredStatus() + `',
 	bank_account_id   TEXT NOT NULL DEFAULT '',
 	created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 )`
@@ -62,7 +61,7 @@ func ensureUserColumns(db *sql.DB) error {
 		return err
 	}
 	if !present["codi_status"] {
-		if _, err := db.Exec(`ALTER TABLE onboardings ADD COLUMN codi_status TEXT NOT NULL DEFAULT '` + definitions.CodiNotRegistered + `'`); err != nil {
+		if _, err := db.Exec(`ALTER TABLE onboardings ADD COLUMN codi_status TEXT NOT NULL DEFAULT '` + domain.NotRegisteredStatus() + `'`); err != nil {
 			return err
 		}
 	}
@@ -111,7 +110,7 @@ func (repository *SQLiteRepository) Find(id string) (domain.User, bool) {
 		return domain.User{}, false
 	}
 	if taxRegime.Valid {
-		user.TaxRegime = copyText(&taxRegime.String)
+		user.TaxRegime = domain.CopyText(&taxRegime.String)
 	}
 	return cloneUser(user), true
 }

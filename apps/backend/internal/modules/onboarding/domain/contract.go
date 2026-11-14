@@ -16,13 +16,13 @@ func Build(input Input) (User, map[string]string) {
 		BusinessName:     normalized.BusinessName,
 		BusinessActivity: normalized.BusinessActivity,
 		RFC:              normalized.RFC,
-		TaxRegime:        copyText(normalized.TaxRegime),
+		TaxRegime:        CopyText(normalized.TaxRegime),
 		Customer: Customer{
 			Name:  normalized.Client.Name,
 			Phone: normalized.Client.Phone,
 			Email: normalized.Client.Email,
 		},
-		CodiStatus: definitions.CodiNotRegistered,
+		CodiStatus: NotRegisteredStatus(),
 	}
 	if fieldErrors := Allow(user); len(fieldErrors) > 0 {
 		return User{}, fieldErrors
@@ -59,6 +59,11 @@ func Allow(user User) map[string]string {
 	return errors
 }
 
+// NotRegisteredStatus es el estado de un usuario que todavía no tiene CLABE.
+func NotRegisteredStatus() string {
+	return definitions.CodiNotRegistered
+}
+
 // View proyecta el usuario al JSON que el formulario ya recibe.
 func View(user User) Onboarding {
 	return Onboarding{
@@ -67,7 +72,7 @@ func View(user User) Onboarding {
 			Name:             user.Name,
 			Profession:       user.Profession,
 			Client:           Client{Name: user.Customer.Name, Phone: user.Customer.Phone, Email: user.Customer.Email},
-			TaxRegime:        copyText(user.TaxRegime),
+			TaxRegime:        CopyText(user.TaxRegime),
 			BusinessName:     user.BusinessName,
 			BusinessActivity: user.BusinessActivity,
 			RFC:              user.RFC,
@@ -118,7 +123,8 @@ func phoneAllowed(phone string) bool {
 	return digits >= definitions.PhoneMinDigits && digits <= definitions.PhoneMaxDigits
 }
 
-func copyText(value *string) *string {
+// CopyText devuelve una copia del texto para que el puntero no se comparta.
+func CopyText(value *string) *string {
 	if value == nil {
 		return nil
 	}
