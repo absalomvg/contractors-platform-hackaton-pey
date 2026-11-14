@@ -1,6 +1,7 @@
 import type {
   CancelChargeRequest,
   ChargesQuery,
+  CustomerRowDto,
   CustomersQuery,
   DashboardChargeDto,
   DashboardChargesDto,
@@ -13,6 +14,7 @@ import type {
   PeriodQuery,
   UpdateDashboardChargeRequest,
 } from '@platform/contracts';
+import type { NewCustomerInput } from '../domain/dashboard';
 
 /** Endpoints of the dashboard contract (/api/contractors/{contractorId}/dashboard/*). */
 export interface DashboardGateway {
@@ -25,28 +27,36 @@ export interface DashboardGateway {
   cancelCharge(contractorId: string, chargeId: string, body: CancelChargeRequest): Promise<DashboardChargeDto>;
 }
 
+/** Customer creation and phone lookup directory (local until backend exposes POST /customers). */
+export interface CustomersDirectoryGateway {
+  createCustomer(contractorId: string, input: NewCustomerInput): Promise<CustomerRowDto>;
+  listPhones(contractorId: string): Record<string, string>;
+  syncFirstCustomer(contractorId: string, firstCustomer: { name: string; phone: string; email: string }): void;
+}
+
 /**
  * Operations owned by the payments module (docs/workflow.md: POST /api/payments,
  * /remind and the pey webhook). Not part of the dashboard contract; the
- * prototype uses a mock until that module exposes them.
+ * prototype uses a local gateway until that module exposes them.
  */
 export interface PaymentsGateway {
-  createCharge(contractorId: string, input: NewChargeInput): Promise<DashboardChargeDto>;
+  createCharge(contractorId: string, input: NewChargeInput): Promise<CreatedChargeResult>;
   sendReminder(contractorId: string, chargeId: string): Promise<DashboardChargeDto>;
 }
 
-/** Existing customer, or a new one created together with the charge. */
-export type ChargeCustomerInput =
-  | { readonly customerId: string }
-  | { readonly name: string; readonly phone: string; readonly email?: string };
-
 export interface NewChargeInput {
-  readonly customer: ChargeCustomerInput;
+  readonly customerId: string;
   readonly concept: string;
   readonly amountCents: number;
   readonly dueDate: string;
-  /** How pey collects it (CreatePaymentIntentRequest.method). */
   readonly method: PaymentMethodDto;
+}
+
+export interface CreatedChargeResult {
+  readonly charge: DashboardChargeDto;
+  readonly method: PaymentMethodDto;
+  readonly paymentLinkUrl?: string;
+  readonly codiQrString?: string;
 }
 
 /** Error of a dashboard call. Branch on `code`, never on `message`. */
