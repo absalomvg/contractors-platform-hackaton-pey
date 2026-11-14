@@ -1508,7 +1508,8 @@
           "client",
           "businessName",
           "businessActivity",
-          "rfc"
+          "rfc",
+          "clabe"
         ],
         "properties": {
           "name": {
@@ -1544,6 +1545,15 @@
             "minLength": 1,
             "maxLength": 255,
             "description": "12 or 13 characters. Trimmed and uppercased before syntax validation. No SAT lookup."
+          },
+          "clabe": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "18-digit CLABE of the bank account that receives the business's payments. Spaces and hyphens are removed, then 18 digits with a valid check digit (weights 3, 7, 1) are required.",
+            "examples": [
+              "002 010 077777777771"
+            ]
           }
         }
       },
@@ -1556,7 +1566,8 @@
           "client",
           "businessName",
           "businessActivity",
-          "rfc"
+          "rfc",
+          "clabe"
         ],
         "properties": {
           "name": {
@@ -1595,6 +1606,14 @@
           },
           "id": {
             "type": "string"
+          },
+          "clabe": {
+            "type": "string",
+            "pattern": "^([0-9]{18})?$",
+            "description": "Normalized 18-digit CLABE. Empty string only for records created before the field existed.",
+            "examples": [
+              "002010077777777771"
+            ]
           }
         }
       },

@@ -21,6 +21,9 @@ type Input struct {
 	BusinessName     string  `json:"businessName"`
 	BusinessActivity string  `json:"businessActivity"`
 	RFC              string  `json:"rfc"`
+	// CLABE is the 18-digit interbank account where the business receives its
+	// payments (pey deposits there; the platform never holds the money).
+	CLABE string `json:"clabe"`
 }
 
 type Onboarding struct {
@@ -36,6 +39,28 @@ type Repository interface {
 var rfcPattern = regexp.MustCompile(`^[A-ZÑ&]{3,4}[0-9]{6}[A-Z0-9]{3}$`)
 var phonePattern = regexp.MustCompile(`^\+?[0-9 ()-]+$`)
 
+// CLABE layout: 3-digit bank, 3-digit branch plaza, 11-digit account and a
+// check digit computed with the weights 3, 7, 1 (Banxico).
+const ClabeLength = 18
+
+var clabePattern = regexp.MustCompile(`^[0-9]{18}$`)
+var clabeWeights = [3]int{3, 7, 1}
+
+// clabeSeparators are stripped so pasted values like "002 010 ..." validate.
+var clabeSeparators = strings.NewReplacer(" ", "", "-", "")
+
+// ValidClabe reports whether clabe has 18 digits and a correct check digit.
+func ValidClabe(clabe string) bool {
+	if !clabePattern.MatchString(clabe) {
+		return false
+	}
+	sum := 0
+	for index := 0; index < ClabeLength-1; index++ {
+		sum += int(clabe[index]-'0') * clabeWeights[index%len(clabeWeights)] % 10
+	}
+	return int(clabe[ClabeLength-1]-'0') == (10-sum%10)%10
+}
+
 func (input *Input) Normalize() {
 	input.Name = strings.TrimSpace(input.Name)
 	input.Profession = strings.TrimSpace(input.Profession)
@@ -45,6 +70,7 @@ func (input *Input) Normalize() {
 	input.BusinessName = strings.TrimSpace(input.BusinessName)
 	input.BusinessActivity = strings.TrimSpace(input.BusinessActivity)
 	input.RFC = strings.ToUpper(strings.TrimSpace(input.RFC))
+	input.CLABE = clabeSeparators.Replace(strings.TrimSpace(input.CLABE))
 	if input.TaxRegime != nil {
 		value := strings.TrimSpace(*input.TaxRegime)
 		if value == "" {
@@ -61,6 +87,7 @@ func (input Input) Validate() map[string]string {
 		"name": input.Name, "profession": input.Profession, "client.name": input.Client.Name,
 		"client.phone": input.Client.Phone, "client.email": input.Client.Email,
 		"businessName": input.BusinessName, "businessActivity": input.BusinessActivity, "rfc": input.RFC,
+		"clabe": input.CLABE,
 	} {
 		if value == "" {
 			errors[field] = "Este campo es obligatorio."
@@ -85,6 +112,9 @@ func (input Input) Validate() map[string]string {
 	}
 	if input.RFC != "" && !rfcPattern.MatchString(input.RFC) {
 		errors["rfc"] = "Ingresa un RFC válido de 12 o 13 caracteres."
+	}
+	if input.CLABE != "" && !ValidClabe(input.CLABE) {
+		errors["clabe"] = "Ingresa una CLABE válida de 18 dígitos."
 	}
 	if input.TaxRegime != nil && utf8.RuneCountInString(*input.TaxRegime) > 255 {
 		errors["taxRegime"] = "Usa como máximo 255 caracteres."

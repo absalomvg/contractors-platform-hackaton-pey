@@ -15,7 +15,7 @@ import (
 )
 
 func validInput() map[string]any {
-	return map[string]any{"name": " Ana ", "profession": "Electrician", "client": map[string]any{"name": "Luis", "phone": "+52 555 123 4567", "email": "luis@example.com"}, "businessName": "Electrical Services", "businessActivity": "Electrical installations", "rfc": " aaa010101aaa "}
+	return map[string]any{"name": " Ana ", "profession": "Electrician", "client": map[string]any{"name": "Luis", "phone": "+52 555 123 4567", "email": "luis@example.com"}, "businessName": "Electrical Services", "businessActivity": "Electrical installations", "rfc": " aaa010101aaa ", "clabe": "002 010 077777777771"}
 }
 
 func submit(handler http.Handler, payload any) *httptest.ResponseRecorder {
@@ -41,7 +41,7 @@ func TestCreateAndRetrieve(t *testing.T) {
 			}
 			var result map[string]any
 			_ = json.Unmarshal(response.Body.Bytes(), &result)
-			if result["id"] == "" || result["name"] != "Ana" || result["rfc"] != "AAA010101AAA" {
+			if result["id"] == "" || result["name"] != "Ana" || result["rfc"] != "AAA010101AAA" || result["clabe"] != "002010077777777771" {
 				t.Fatalf("unexpected record: %v", result)
 			}
 			if _, exists := result["taxRegime"]; exists != withTax {
@@ -61,7 +61,7 @@ func TestCreateAndRetrieve(t *testing.T) {
 }
 
 func TestRequiredFields(t *testing.T) {
-	for _, field := range []string{"name", "profession", "client.name", "client.phone", "client.email", "businessName", "businessActivity", "rfc"} {
+	for _, field := range []string{"name", "profession", "client.name", "client.phone", "client.email", "businessName", "businessActivity", "rfc", "clabe"} {
 		t.Run(field, func(t *testing.T) {
 			input := validInput()
 			if strings.HasPrefix(field, "client.") {
@@ -85,10 +85,10 @@ func TestRequiredFields(t *testing.T) {
 }
 
 func TestInvalidFormats(t *testing.T) {
-	for _, field := range []string{"email", "phone", "rfc"} {
+	for _, field := range []string{"email", "phone", "rfc", "clabe"} {
 		t.Run(field, func(t *testing.T) {
 			input := validInput()
-			if field == "rfc" {
+			if field == "rfc" || field == "clabe" {
 				input[field] = "invalid"
 			} else {
 				input["client"].(map[string]any)[field] = "invalid"

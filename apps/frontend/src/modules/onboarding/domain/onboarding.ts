@@ -6,6 +6,7 @@ export interface OnboardingInput {
   businessName: string;
   businessActivity: string;
   rfc: string;
+  clabe: string;
 }
 
 export interface Onboarding extends OnboardingInput {
@@ -25,6 +26,7 @@ export function validateOnboarding(input: OnboardingInput): FieldErrors {
     businessName: input.businessName,
     businessActivity: input.businessActivity,
     rfc: input.rfc,
+    clabe: input.clabe,
   };
   for (const [field, value] of Object.entries(required)) {
     if (!value.trim()) errors[field] = 'Este campo es obligatorio.';
@@ -40,6 +42,22 @@ export function validateOnboarding(input: OnboardingInput): FieldErrors {
   if (input.rfc && !/^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/.test(input.rfc)) {
     errors.rfc = 'Escribe un RFC de 12 o 13 caracteres con formato válido.';
   }
+  if (input.clabe && !isValidClabe(input.clabe)) {
+    errors.clabe = 'Escribe una CLABE válida de 18 dígitos.';
+  }
   if (input.taxRegime && input.taxRegime.length > 255) errors.taxRegime = 'Usa un máximo de 255 caracteres.';
   return errors;
+}
+
+const CLABE_WEIGHTS = [3, 7, 1];
+
+/** 18 digits whose last one is the Banxico check digit (weights 3, 7, 1). */
+export function isValidClabe(clabe: string): boolean {
+  if (!/^\d{18}$/.test(clabe)) return false;
+  const sum = [...clabe.slice(0, 17)].reduce((total, digit, index) => total + (Number(digit) * CLABE_WEIGHTS[index % 3]!) % 10, 0);
+  return Number(clabe[17]) === (10 - (sum % 10)) % 10;
+}
+
+export function normalizeClabe(value: string): string {
+  return value.replace(/[\s-]/g, '');
 }
