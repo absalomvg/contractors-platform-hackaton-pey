@@ -1,6 +1,15 @@
 import type { ApiErrorResponse, CreateOnboardingRequest, OnboardingDto } from '@platform/contracts';
 import { OnboardingError, type OnboardingGateway } from '../application/onboarding-gateway';
 
+async function parseErrorResponse(response: Response, fallbackMessage: string): Promise<OnboardingError> {
+  try {
+    const error: ApiErrorResponse = await response.json();
+    return new OnboardingError(error.message, error.errors);
+  } catch {
+    return new OnboardingError(fallbackMessage);
+  }
+}
+
 export const httpOnboardingGateway: OnboardingGateway = {
   async create(input) {
     const payload: CreateOnboardingRequest = { ...input, client: { ...input.client } };
@@ -10,13 +19,23 @@ export const httpOnboardingGateway: OnboardingGateway = {
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
-      let error: ApiErrorResponse;
-      try {
-        error = await response.json();
-      } catch {
-        throw new OnboardingError('No fue posible guardar el registro. Inténtalo de nuevo.');
-      }
-      throw new OnboardingError(error.message, error.errors);
+      throw await parseErrorResponse(response, 'No fue posible guardar el registro. Inténtalo de nuevo.');
+    }
+    const data: OnboardingDto = await response.json();
+    return { ...data, client: { ...data.client } };
+  },
+
+  async find(id, signal) {
+    const trimmed = id.trim();
+    if (!trimmed) {
+      throw new OnboardingError('Ingresa un folio para consultar.');
+    }
+    const response = await fetch(`/api/onboarding/${encodeURIComponent(trimmed)}`, {
+      headers: { Accept: 'application/json' },
+      signal,
+    });
+    if (!response.ok) {
+      throw await parseErrorResponse(response, 'No fue posible consultar el registro. Inténtalo de nuevo.');
     }
     const data: OnboardingDto = await response.json();
     return { ...data, client: { ...data.client } };
