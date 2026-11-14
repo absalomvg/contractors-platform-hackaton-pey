@@ -8,11 +8,13 @@ import (
 	"net/http"
 )
 
-// New builds the API with in-memory storage.
-func New() http.Handler { return NewWith(infrastructure.NewMemoryRepository()) }
+// New builds the API with in-memory storage and no Pey key.
+func New() http.Handler {
+	return NewWith(infrastructure.NewMemoryRepository(), infrastructure.NewUnavailablePey())
+}
 
-// NewWith builds the API on the given onboarding repository (e.g. SQLite).
-func NewWith(onboardings domain.Repository) http.Handler {
+// NewWith builds the API on the given onboarding repository and Pey registrar.
+func NewWith(onboardings domain.Repository, banks domain.BankRegistrar) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
@@ -22,7 +24,7 @@ func NewWith(onboardings domain.Repository) http.Handler {
 		writer.Header().Set("Content-Type", "application/json")
 		_, _ = writer.Write([]byte(`{"contractors":[]}`))
 	})
-	onboardingReader := onboarding.Register(mux, onboardings)
+	onboardingReader := onboarding.Register(mux, onboardings, banks)
 	dashboard.Register(mux, dashboard.NewOnboardingSource(onboardingReader))
 	return mux
 }

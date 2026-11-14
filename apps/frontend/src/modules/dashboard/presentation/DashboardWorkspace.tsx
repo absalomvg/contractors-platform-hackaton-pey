@@ -30,6 +30,7 @@ import { ChargeActionModal, type ActiveChargeModal } from './ChargeActionModal';
 import { CustomersView } from './CustomersView';
 import { BoltIcon, CheckIcon, HomeIcon, ListIcon, PlusIcon, UserIcon, UsersIcon } from './DashboardIcons';
 import { DashboardOverview } from './DashboardOverview';
+import { FirstChargeStepper } from './FirstChargeStepper';
 import { PaymentsListView, type ChargeActionKind } from './PaymentsListView';
 import { ProfileView, type DemoControls } from './ProfileView';
 import { QuickPaymentsView } from './QuickPaymentsView';
@@ -79,7 +80,7 @@ export function DashboardWorkspace({
   const [modalErrors, setModalErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [showFirstChargeGuide, setShowFirstChargeGuide] = useState(true);
+  const [highlightedChargeId, setHighlightedChargeId] = useState<string | null>(null);
 
   const reload = useCallback(() => setReloadKey((key) => key + 1), []);
 
@@ -346,24 +347,32 @@ export function DashboardWorkspace({
       )}
 
       <div className="db-body">
-        {screen === 'dashboard' && (
-          <DashboardOverview
+        {screen === 'dashboard' && allCharges.length === 0 && (
+          <FirstChargeStepper
             profile={profile}
+            customers={customers.customers}
+            customerPhones={customerPhones}
+            clabeLabel={clabeLabel}
+            onCreateCharge={handleCreateCharge}
+            onRegisterCustomer={() => setScreen('clients')}
+            onCreated={(result) => {
+              // Show the new charge as the first row of the payments table.
+              setFilter('all');
+              setSearch('');
+              setHighlightedChargeId(result.charge.chargeId);
+              setScreen('charges');
+            }}
+          />
+        )}
+
+        {screen === 'dashboard' && allCharges.length > 0 && (
+          <DashboardOverview
             summary={summary}
             recentCharges={allCharges}
-            clabeLabel={clabeLabel}
-            showFirstChargeGuide={showFirstChargeGuide}
-            onDismissGuide={() => setShowFirstChargeGuide(false)}
             onNavigate={setScreen}
             onOpenChargesWithFilter={(nextFilter) => {
               setFilter(nextFilter);
               setScreen('charges');
-            }}
-            onStartFirstCharge={() => {
-              const first = customers.customers[0]?.customerId;
-              if (first) setSelectedCustomerId(first);
-              setShowFirstChargeGuide(false);
-              setScreen('payment');
             }}
           />
         )}
@@ -414,7 +423,8 @@ export function DashboardWorkspace({
             onFilterChange={setFilter}
             onSearchChange={setSearch}
             onOpenAction={openActionModal}
-            onCreatePayment={() => setScreen('payment')}
+            onCreatePayment={() => setScreen(allCharges.length === 0 ? 'dashboard' : 'payment')}
+            highlightedChargeId={highlightedChargeId}
           />
         )}
 
@@ -441,7 +451,15 @@ export function DashboardWorkspace({
               demo?.reset(contractorId);
               setFilter('all');
               setSearch('');
-              notify('Datos de prueba restaurados.');
+              setHighlightedChargeId(null);
+              notify('Datos vaciados. En Inicio verás el asistente de primer cobro.');
+              reload();
+            }}
+            onLoadDemo={() => {
+              demo?.loadDemoData(contractorId);
+              setFilter('all');
+              setSearch('');
+              notify('Se cargaron 5 cobros de prueba.');
               reload();
             }}
             onSignOut={onSignOut}

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"contractors-platform/backend/internal/app"
+	"contractors-platform/backend/internal/modules/onboarding/domain"
 	"contractors-platform/backend/internal/modules/onboarding/infrastructure"
 	"contractors-platform/backend/internal/platform/database"
 	"errors"
@@ -29,7 +30,15 @@ func main() {
 	if err != nil || number < 1 || number > 65535 {
 		log.Fatal("PORT must be an integer between 1 and 65535")
 	}
-	handler := app.New()
+	var banks domain.BankRegistrar = infrastructure.NewUnavailablePey()
+	if key := os.Getenv("PEY_API_KEY"); key != "" {
+		peyURL := os.Getenv("PEY_API_URL")
+		if peyURL == "" {
+			peyURL = "https://api.pey.mx"
+		}
+		banks = infrastructure.NewPeyClient(peyURL, key)
+	}
+	handler := app.NewWith(infrastructure.NewMemoryRepository(), banks)
 	// DATABASE_PATH enables SQLite; without it data lives in memory.
 	if path := os.Getenv("DATABASE_PATH"); path != "" {
 		db, err := database.OpenSQLite(path)
@@ -41,7 +50,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		handler = app.NewWith(repository)
+		handler = app.NewWith(repository, banks)
 		log.Printf("Using SQLite database at %s", path)
 	}
 	server := &http.Server{Addr: net.JoinHostPort(host, port), Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second}

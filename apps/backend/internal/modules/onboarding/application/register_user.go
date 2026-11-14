@@ -1,20 +1,25 @@
 package application
 
 import (
+	"context"
 	"contractors-platform/backend/internal/modules/onboarding/domain"
 	"errors"
+	"log"
 )
 
-// RegisterUser guarda el usuario creado desde el formulario.
-type RegisterUser struct{ repository domain.Repository }
-
-// NewRegisterUser prepara el acto de alta con el repositorio indicado.
-func NewRegisterUser(repository domain.Repository) *RegisterUser {
-	return &RegisterUser{repository: repository}
+// RegisterUser guarda el usuario creado desde el formulario y registra su CLABE en Pey.
+type RegisterUser struct {
+	repository domain.Repository
+	banks      domain.BankRegistrar
 }
 
-// Create pide el usuario al contrato y lo guarda solo si el contrato lo permite.
-func (act *RegisterUser) Create(input domain.Input) (domain.Onboarding, map[string]string, error) {
+// NewRegisterUser prepara el acto de alta con el repositorio y el registro en Pey.
+func NewRegisterUser(repository domain.Repository, banks domain.BankRegistrar) *RegisterUser {
+	return &RegisterUser{repository: repository, banks: banks}
+}
+
+// Create pide el usuario al contrato, lo guarda y, si Pey responde, anota el id y el estado.
+func (act *RegisterUser) Create(ctx context.Context, input domain.Input) (domain.Onboarding, map[string]string, error) {
 	user, fieldErrors := domain.Build(input)
 	if len(fieldErrors) > 0 {
 		return domain.Onboarding{}, fieldErrors, nil
@@ -33,5 +38,32 @@ func (act *RegisterUser) Create(input domain.Input) (domain.Onboarding, map[stri
 	if err != nil {
 		return domain.Onboarding{}, nil, err
 	}
-	return domain.View(saved), nil, nil
+	return act.recordPeyAccount(ctx, saved), nil, nil
+}
+
+func (act *RegisterUser) recordPeyAccount(ctx context.Context, saved domain.User) domain.Onboarding {
+	payload, ok := domain.EncodeRegistration(saved)
+	if !ok {
+		return domain.View(saved)
+	}
+	response, err := act.banks.Register(ctx, payload)
+	if err != nil {
+		log.Printf("onboarding: pey register %s: %v", saved.ID, err)
+		return domain.View(saved)
+	}
+	account, ok := domain.DecodeBankAccount(response)
+	if !ok {
+		log.Printf("onboarding: pey register %s: respuesta sin id o estado válido", saved.ID)
+		return domain.View(saved)
+	}
+	updated, ok := domain.AttachBankAccount(saved, account)
+	if !ok {
+		return domain.View(saved)
+	}
+	recorded, err := act.repository.RecordBankAccount(updated)
+	if err != nil {
+		log.Printf("onboarding: record bank account %s %s: %v", saved.ID, account.ID, err)
+		return domain.View(saved)
+	}
+	return domain.View(recorded)
 }

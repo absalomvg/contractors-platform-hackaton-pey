@@ -48,7 +48,7 @@ func (handler *Handler) Create(writer http.ResponseWriter, request *http.Request
 		writeJSON(writer, 400, map[string]string{"message": "Envía un único objeto JSON."})
 		return
 	}
-	record, validation, err := handler.register.Create(input)
+	record, validation, err := handler.register.Create(request.Context(), input)
 	if len(validation) > 0 {
 		writeJSON(writer, 422, map[string]any{"message": "Revisa los campos del formulario.", "errors": validation})
 		return

@@ -5,6 +5,7 @@ export interface DemoControls {
   simulateProviderPayment(contractorId?: string): string | null;
   simulateConcurrentEdit(chargeId: string, contractorId?: string): void;
   reset(contractorId?: string): void;
+  loadDemoData(contractorId?: string): void;
 }
 
 interface ProfileViewProps {
@@ -14,6 +15,7 @@ interface ProfileViewProps {
   readonly onSimulatePayment: () => void;
   readonly onSimulateConflict: () => void;
   readonly onResetDemo: () => void;
+  readonly onLoadDemo: () => void;
   readonly onSignOut?: () => void;
 }
 
@@ -30,6 +32,7 @@ export function ProfileView({
   onSimulatePayment,
   onSimulateConflict,
   onResetDemo,
+  onLoadDemo,
   onSignOut,
 }: ProfileViewProps) {
   return (
@@ -106,8 +109,11 @@ export function ProfileView({
             <button type="button" className="db-btn-secondary" onClick={onSimulateConflict}>
               Simular conflicto v409
             </button>
+            <button type="button" className="db-btn-secondary" onClick={onLoadDemo}>
+              Cargar 5 cobros de prueba
+            </button>
             <button type="button" className="db-btn-ghost" onClick={onResetDemo}>
-              Restaurar datos demo
+              Vaciar datos (ver el primer cobro)
             </button>
           </div>
         </section>
