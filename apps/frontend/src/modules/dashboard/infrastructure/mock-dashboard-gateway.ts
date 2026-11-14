@@ -88,6 +88,12 @@ function addDays(date: string, days: number): string {
 const instant = (date: string, time = '17:00:00') => `${date}T${time}-06:00`;
 const daysBetween = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / DAY_MS);
 
+/** A new business starts with no customers or charges (first-charge stepper). */
+function emptyState(): WorkspaceState {
+  return { customers: [], charges: [], sequence: 0, customerSequence: 0 };
+}
+
+/** Five sample charges, one per state, loaded on demand from the profile. */
 function seed(today: string): WorkspaceState {
   const customers: StoredCustomer[] = [
     { customerId: 'cus_mateo', name: 'Mateo Hernández', phone: '5541238910', email: 'mateo@ejemplo.mx' },
@@ -168,14 +174,14 @@ function fail(status: number, message: string, code?: DashboardErrorCode, fields
 
 const normalize = (value: string) => value.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 
-function loadStoredState(contractorId: string, fallbackToday: string): WorkspaceState {
-  if (typeof window === 'undefined') return seed(fallbackToday);
+function loadStoredState(contractorId: string): WorkspaceState {
+  if (typeof window === 'undefined') return emptyState();
   try {
     const raw = window.localStorage.getItem(`${STORAGE_PREFIX}${contractorId}`);
-    if (!raw) return seed(fallbackToday);
+    if (!raw) return emptyState();
     const parsed = JSON.parse(raw) as Partial<WorkspaceState>;
     if (!Array.isArray(parsed.customers) || !Array.isArray(parsed.charges)) {
-      return seed(fallbackToday);
+      return emptyState();
     }
     return {
       customers: parsed.customers,
@@ -184,7 +190,7 @@ function loadStoredState(contractorId: string, fallbackToday: string): Workspace
       customerSequence: typeof parsed.customerSequence === 'number' ? parsed.customerSequence : parsed.customers.length,
     };
   } catch {
-    return seed(fallbackToday);
+    return emptyState();
   }
 }
 
@@ -202,7 +208,10 @@ export interface MockDashboard extends DashboardGateway, PaymentsGateway, Custom
   simulateProviderPayment(contractorId?: string): string | null;
   /** Simulates another device editing a charge, so the next write gets 409. */
   simulateConcurrentEdit(chargeId: string, contractorId?: string): void;
+  /** Empties the business: no customers or charges. */
   reset(contractorId?: string): void;
+  /** Replaces the business data with the five sample charges. */
+  loadDemoData(contractorId?: string): void;
 }
 
 export function createMockDashboard(): MockDashboard {
@@ -213,7 +222,7 @@ export function createMockDashboard(): MockDashboard {
   function getState(contractorId: string): WorkspaceState {
     const existing = states.get(contractorId);
     if (existing) return existing;
-    const loaded = loadStoredState(contractorId, today());
+    const loaded = loadStoredState(contractorId);
     states.set(contractorId, loaded);
     return loaded;
   }
@@ -589,8 +598,11 @@ export function createMockDashboard(): MockDashboard {
     },
 
     reset(contractorId = MOCK_CONTRACTOR_ID) {
-      const fresh = seed(today());
-      saveState(contractorId, fresh);
+      saveState(contractorId, emptyState());
+    },
+
+    loadDemoData(contractorId = MOCK_CONTRACTOR_ID) {
+      saveState(contractorId, seed(today()));
     },
   };
   return gateway;

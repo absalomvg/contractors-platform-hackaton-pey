@@ -1,4 +1,4 @@
-import type { DashboardChargeDto, DashboardProfileDto, DashboardSummaryDto } from '@platform/contracts';
+import type { DashboardChargeDto, DashboardSummaryDto } from '@platform/contracts';
 import {
   CHARGE_BADGE_LABELS,
   PAYMENT_METHOD_LABELS,
@@ -9,18 +9,13 @@ import {
   type ChargeFilter,
   type DashboardScreen,
 } from '../domain/dashboard';
-import { ArrowRightIcon, BoltIcon, ListIcon, PlusIcon, UsersIcon, XIcon } from './DashboardIcons';
+import { ArrowRightIcon, BoltIcon, ListIcon, PlusIcon, UsersIcon } from './DashboardIcons';
 
 interface DashboardOverviewProps {
-  readonly profile: DashboardProfileDto;
   readonly summary: DashboardSummaryDto;
   readonly recentCharges: readonly DashboardChargeDto[];
-  readonly clabeLabel: string;
-  readonly showFirstChargeGuide: boolean;
-  readonly onDismissGuide: () => void;
   readonly onNavigate: (screen: DashboardScreen) => void;
   readonly onOpenChargesWithFilter: (filter: ChargeFilter) => void;
-  readonly onStartFirstCharge: () => void;
 }
 
 const BADGE_CLASS: Record<string, string> = {
@@ -35,38 +30,13 @@ function percentLabel(ratio: number | null): string {
 }
 
 export function DashboardOverview({
-  profile,
   summary,
   recentCharges,
-  clabeLabel,
-  showFirstChargeGuide,
-  onDismissGuide,
   onNavigate,
   onOpenChargesWithFilter,
-  onStartFirstCharge,
 }: DashboardOverviewProps) {
   return (
     <div className="db-stack">
-      {showFirstChargeGuide && (
-        <section className="db-hero-banner" aria-label="Guía de primer cobro">
-          <span className="db-hero-tag">Cuenta lista · Directo a CLABE {clabeLabel}</span>
-          <h2>Hola, {profile.name}</h2>
-          <p>
-            Ya tienes registrado a <strong>{profile.firstCustomer.name}</strong>. Crea tu primer enlace de pago o QR CoDi en segundos.
-          </p>
-          <div className="db-hero-actions">
-            <button type="button" className="db-btn-accent" onClick={onStartFirstCharge}>
-              <BoltIcon />
-              <span>Cobrar a {profile.firstCustomer.name}</span>
-            </button>
-            <button type="button" className="db-btn-ghost" style={{ color: '#cbd5e1' }} onClick={onDismissGuide} aria-label="Ocultar guía">
-              <XIcon />
-              <span>Ocultar</span>
-            </button>
-          </div>
-        </section>
-      )}
-
       <section className="db-kpi-grid" aria-label="Resumen financiero">
         <article className="db-kpi-card">
           <span className="db-kpi-label">Cobrado este mes</span>
