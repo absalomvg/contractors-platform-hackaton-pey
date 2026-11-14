@@ -16,6 +16,9 @@ type Input struct {
 	BusinessName     string  `json:"businessName"`
 	BusinessActivity string  `json:"businessActivity"`
 	RFC              string  `json:"rfc"`
+	// CLABE is the 18-digit interbank account where the business receives its
+	// payments (pey deposits there; the platform never holds the money).
+	CLABE string `json:"clabe"`
 }
 
 // Onboarding es la respuesta que el formulario ya sabe leer.

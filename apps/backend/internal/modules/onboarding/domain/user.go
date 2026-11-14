@@ -17,6 +17,7 @@ type User struct {
 	RFC              string
 	TaxRegime        *string
 	Customer         Customer
+	CLABE            string
 	CodiStatus       string
 	BankAccountID    string
 }
@@ -25,4 +26,5 @@ type User struct {
 type Repository interface {
 	Save(User) (User, error)
 	Find(string) (User, bool)
+	HasCLABE(string) (bool, error)
 }

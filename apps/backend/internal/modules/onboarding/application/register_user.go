@@ -1,6 +1,9 @@
 package application
 
-import "contractors-platform/backend/internal/modules/onboarding/domain"
+import (
+	"contractors-platform/backend/internal/modules/onboarding/domain"
+	"errors"
+)
 
 // RegisterUser guarda el usuario creado desde el formulario.
 type RegisterUser struct{ repository domain.Repository }
@@ -16,7 +19,17 @@ func (act *RegisterUser) Create(input domain.Input) (domain.Onboarding, map[stri
 	if len(fieldErrors) > 0 {
 		return domain.Onboarding{}, fieldErrors, nil
 	}
+	taken, err := act.repository.HasCLABE(user.CLABE)
+	if err != nil {
+		return domain.Onboarding{}, nil, err
+	}
+	if fieldErrors = domain.TakenCLABE(user.CLABE, taken); len(fieldErrors) > 0 {
+		return domain.Onboarding{}, fieldErrors, nil
+	}
 	saved, err := act.repository.Save(user)
+	if errors.Is(err, domain.ErrCLABETaken) {
+		return domain.Onboarding{}, domain.TakenCLABE(user.CLABE, true), nil
+	}
 	if err != nil {
 		return domain.Onboarding{}, nil, err
 	}

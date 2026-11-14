@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"log"
+	"strings"
 )
 
 func onboardingSchema() string {
@@ -22,6 +23,7 @@ CREATE TABLE IF NOT EXISTS onboardings (
 	business_name     TEXT NOT NULL,
 	business_activity TEXT NOT NULL,
 	rfc               TEXT NOT NULL,
+	clabe             TEXT NOT NULL DEFAULT '',
 	codi_status       TEXT NOT NULL DEFAULT '` + domain.NotRegisteredStatus() + `',
 	bank_account_id   TEXT NOT NULL DEFAULT '',
 	created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
@@ -36,6 +38,9 @@ func NewSQLiteRepository(db *sql.DB) (*SQLiteRepository, error) {
 		return nil, err
 	}
 	if err := ensureUserColumns(db); err != nil {
+		return nil, err
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS onboardings_clabe_unique ON onboardings(clabe) WHERE clabe <> ''`); err != nil {
 		return nil, err
 	}
 	return &SQLiteRepository{db: db}, nil
@@ -65,6 +70,11 @@ func ensureUserColumns(db *sql.DB) error {
 			return err
 		}
 	}
+	if !present["clabe"] {
+		if _, err := db.Exec(`ALTER TABLE onboardings ADD COLUMN clabe TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
 	if !present["bank_account_id"] {
 		if _, err := db.Exec(`ALTER TABLE onboardings ADD COLUMN bank_account_id TEXT NOT NULL DEFAULT ''`); err != nil {
 			return err
@@ -73,22 +83,48 @@ func ensureUserColumns(db *sql.DB) error {
 	return nil
 }
 
+// HasCLABE indica si otro usuario ya guardó esa CLABE.
+func (repository *SQLiteRepository) HasCLABE(clabe string) (bool, error) {
+	if clabe == "" {
+		return false, nil
+	}
+	var found int
+	err := repository.db.QueryRow(`SELECT 1 FROM onboardings WHERE clabe = ? LIMIT 1`, clabe).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // Save guarda el usuario si el contrato lo permite y le asigna un id.
 func (repository *SQLiteRepository) Save(user domain.User) (domain.User, error) {
 	if fieldErrors := domain.Allow(user); len(fieldErrors) > 0 {
 		return domain.User{}, errRejected
+	}
+	taken, err := repository.HasCLABE(user.CLABE)
+	if err != nil {
+		return domain.User{}, err
+	}
+	if taken {
+		return domain.User{}, domain.ErrCLABETaken
 	}
 	var bytes [16]byte
 	if _, err := rand.Read(bytes[:]); err != nil {
 		return domain.User{}, err
 	}
 	user.ID = hex.EncodeToString(bytes[:])
-	_, err := repository.db.Exec(`INSERT INTO onboardings
-		(id, name, profession, client_name, client_phone, client_email, tax_regime, business_name, business_activity, rfc, codi_status, bank_account_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	_, err = repository.db.Exec(`INSERT INTO onboardings
+		(id, name, profession, client_name, client_phone, client_email, tax_regime, business_name, business_activity, rfc, clabe, codi_status, bank_account_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		user.ID, user.Name, user.Profession, user.Customer.Name, user.Customer.Phone, user.Customer.Email,
-		user.TaxRegime, user.BusinessName, user.BusinessActivity, user.RFC, user.CodiStatus, user.BankAccountID)
+		user.TaxRegime, user.BusinessName, user.BusinessActivity, user.RFC, user.CLABE, user.CodiStatus, user.BankAccountID)
 	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			return domain.User{}, domain.ErrCLABETaken
+		}
 		return domain.User{}, err
 	}
 	return cloneUser(user), nil
@@ -99,10 +135,10 @@ func (repository *SQLiteRepository) Find(id string) (domain.User, bool) {
 	var user domain.User
 	var taxRegime sql.NullString
 	err := repository.db.QueryRow(`SELECT id, name, profession, client_name, client_phone, client_email,
-		tax_regime, business_name, business_activity, rfc, codi_status, bank_account_id
+		tax_regime, business_name, business_activity, rfc, clabe, codi_status, bank_account_id
 		FROM onboardings WHERE id = ?`, id).Scan(
 		&user.ID, &user.Name, &user.Profession, &user.Customer.Name, &user.Customer.Phone, &user.Customer.Email,
-		&taxRegime, &user.BusinessName, &user.BusinessActivity, &user.RFC, &user.CodiStatus, &user.BankAccountID)
+		&taxRegime, &user.BusinessName, &user.BusinessActivity, &user.RFC, &user.CLABE, &user.CodiStatus, &user.BankAccountID)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			log.Printf("onboarding: find %s: %v", id, err)

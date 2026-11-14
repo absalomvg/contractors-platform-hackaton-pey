@@ -23,6 +23,8 @@ export interface CreateOnboardingRequest {
   businessName: string;
   businessActivity: string;
   rfc: string;
+  /** 18-digit CLABE where the business receives its payments. Spaces/hyphens allowed on input. */
+  clabe: string;
 }
 
 export interface OnboardingDto extends CreateOnboardingRequest {
