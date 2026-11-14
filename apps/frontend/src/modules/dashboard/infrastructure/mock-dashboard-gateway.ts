@@ -148,7 +148,7 @@ const MOCK_PROFILE: DashboardProfileDto = {
     taxpayerType: 'individual',
     clabeLast4: '7771',
   },
-  contact: { name: 'Mateo Hernández', phone: '5541238910', email: 'mateo@ejemplo.mx' },
+  firstCustomer: { name: 'Mateo Hernández', phone: '5541238910', email: 'mateo@ejemplo.mx' },
   onboarding: { status: 'complete', pendingFields: [] },
 };
 

@@ -8,8 +8,10 @@ section + section { margin-top: 1.75rem; }
 .text-right { text-align: right; }
 .text-center { text-align: center; }
 
-.onboarding-fields { border: 0; margin: 0 0 1.5rem; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
-.onboarding-fields legend { padding: 0 0 1rem; font-weight: 600; }
+.onboarding-fields { border: 0; margin: 0 0 2rem; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.onboarding-fields legend { padding: 0 0 .9rem; font-weight: 600; font-size: 1.05rem; }
+.onboarding-section-description { display: block; margin-top: .2rem; font-weight: 400; font-size: .9rem; color: #64748b; }
+.field-hint { font-size: .8rem; color: #64748b; }
 .form-field { display: flex; flex-direction: column; gap: .4rem; }
 .form-field input, .form-field select { min-width: 0; border: 1px solid #cbd5e1; border-radius: 10px; padding: .65rem .8rem; font: inherit; background: #fff; }
 .form-field input:focus-visible, .form-field select:focus-visible, button:focus-visible { outline: 3px solid #5170ad; outline-offset: 2px; }

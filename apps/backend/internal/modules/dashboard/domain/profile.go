@@ -59,10 +59,12 @@ type Contractor struct {
 	RFC              string
 	TaxRegime        *string
 	CLABE            string
-	Contact          Contact
+	FirstCustomer    FirstCustomer
 }
 
-type Contact struct {
+// FirstCustomer is the customer captured during onboarding (`client`): the
+// person who receives the business's first charge.
+type FirstCustomer struct {
 	Name  string
 	Phone string
 	Email string
@@ -77,12 +79,12 @@ type ProfileSource interface {
 // Profile is the dashboard header: who the contractor is and what is missing
 // from their onboarding.
 type Profile struct {
-	ContractorID string
-	Name         string
-	Profession   string
-	Business     Business
-	Contact      Contact
-	Onboarding   OnboardingSummary
+	ContractorID  string
+	Name          string
+	Profession    string
+	Business      Business
+	FirstCustomer FirstCustomer
+	Onboarding    OnboardingSummary
 }
 
 type Business struct {
@@ -119,8 +121,8 @@ func NewProfile(contractor Contractor) Profile {
 			TaxpayerType: taxpayerTypeFromRFC(contractor.RFC),
 			ClabeLast4:   clabeLast4(contractor.CLABE),
 		},
-		Contact:    contractor.Contact,
-		Onboarding: OnboardingSummary{Status: status, PendingFields: pending},
+		FirstCustomer: contractor.FirstCustomer,
+		Onboarding:    OnboardingSummary{Status: status, PendingFields: pending},
 	}
 }
 

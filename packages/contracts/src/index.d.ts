@@ -145,8 +145,8 @@ export interface DashboardProfileDto {
     /** Last 4 digits of the deposit CLABE; null when not captured yet. */
     clabeLast4: string | null;
   };
-  /** Contact captured in onboarding (`client`). */
-  contact: { name: string; phone: string; email: string };
+  /** Customer captured in onboarding (`client`): receives the first charge. */
+  firstCustomer: { name: string; phone: string; email: string };
   onboarding: { status: OnboardingStatus; pendingFields: OnboardingField[] };
 }
 

@@ -735,7 +735,7 @@ export function DashboardWorkspace({ gateway, payments, contractorId, demo, cust
                     </strong>
                   </div>
                   <div><span className="praxis-subcell">Cuenta de depósito</span><strong>CLABE {clabeLabel}</strong></div>
-                  <div><span className="praxis-subcell">Contacto</span><strong>{profile.contact.name} · {profile.contact.phone}</strong></div>
+                  <div><span className="praxis-subcell">Primer cliente</span><strong>{profile.firstCustomer.name} · {profile.firstCustomer.phone}</strong></div>
                   <div>
                     <span className="praxis-subcell">Registro</span>
                     <strong>
