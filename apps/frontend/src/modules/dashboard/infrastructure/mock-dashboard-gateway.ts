@@ -28,16 +28,19 @@ import {
   NOTE_MAX_LENGTH,
   TAG_MAX_LENGTH,
   mxPhoneDigits,
+  normalizeNewCustomerInput,
   todayInMexico,
   validateNewCustomer,
+  type CustomerBusinessDetails,
+  type CustomerEntityType,
+  type CustomerProfileRecord,
   type NewCustomerInput,
 } from '../domain/dashboard';
 
 /*
  * Persistent local implementation (localStorage + in-memory fallback) of the
- * dashboard, customer directory, and payments contract while backend endpoints
- * beyond GET /profile are built. Automatically syncs the real `firstCustomer`
- * saved during SQLite onboarding.
+ * dashboard, customer directory (individual & company/merchant details), and
+ * payments contract while backend endpoints beyond GET /profile are built.
  */
 
 export const MOCK_CONTRACTOR_ID = 'demo';
@@ -68,9 +71,11 @@ const MESSAGES = {
 
 interface StoredCustomer {
   readonly customerId: string;
+  readonly entityType?: CustomerEntityType;
   readonly name: string;
   readonly phone: string;
   readonly email: string;
+  readonly business?: CustomerBusinessDetails;
 }
 
 type StoredCharge = Omit<DashboardChargeDto, 'overdue' | 'editableFields' | 'customerName'>;
@@ -96,11 +101,57 @@ function emptyState(): WorkspaceState {
 /** Five sample charges, one per state, loaded on demand from the profile. */
 function seed(today: string): WorkspaceState {
   const customers: StoredCustomer[] = [
-    { customerId: 'cus_mateo', name: 'Mateo Hernández', phone: '5541238910', email: 'mateo@ejemplo.mx' },
-    { customerId: 'cus_sofia', name: 'Sofía Ramírez', phone: '5587654321', email: 'sofia@ejemplo.mx' },
-    { customerId: 'cus_diego', name: 'Diego Castellanos', phone: '5533445566', email: 'diego@ejemplo.mx' },
-    { customerId: 'cus_lucia', name: 'Lucía Mendoza', phone: '5599887766', email: 'lucia@ejemplo.mx' },
-    { customerId: 'cus_andres', name: 'Andrés Villalobos', phone: '5522334455', email: 'andres@ejemplo.mx' },
+    {
+      customerId: 'cus_norte',
+      entityType: 'company',
+      name: 'Sofía Ramírez',
+      phone: '5587654321',
+      email: 'pagos@norteindustrial.mx',
+      business: {
+        legalName: 'Comercializadora del Norte S.A. de C.V.',
+        tradeName: 'Norte Industrial',
+        rfc: 'CNO180412AB1',
+        activity: 'Comercio y abarrotes',
+        taxRegime: '601 - General de Ley Personas Morales',
+        fiscalAddress: 'Av. Reforma 450, Col. Juárez, CDMX',
+      },
+    },
+    {
+      customerId: 'cus_mateo',
+      entityType: 'individual',
+      name: 'Mateo Hernández',
+      phone: '5541238910',
+      email: 'mateo@ejemplo.mx',
+    },
+    {
+      customerId: 'cus_roble',
+      entityType: 'company',
+      name: 'Diego Castellanos',
+      phone: '5533445566',
+      email: 'facturacion@elroble.mx',
+      business: {
+        legalName: 'Ferretería y Materiales El Roble',
+        tradeName: 'El Roble',
+        rfc: 'CADG8905121H2',
+        activity: 'Construcción y remodelación',
+        taxRegime: '626 - Régimen Simplificado de Confianza (RESICO)',
+        fiscalAddress: 'Calz. Tlalpan 1120, Benito Juárez, CDMX',
+      },
+    },
+    {
+      customerId: 'cus_lucia',
+      entityType: 'individual',
+      name: 'Lucía Mendoza',
+      phone: '5599887766',
+      email: 'lucia@ejemplo.mx',
+    },
+    {
+      customerId: 'cus_andres',
+      entityType: 'individual',
+      name: 'Andrés Villalobos',
+      phone: '5522334455',
+      email: 'andres@ejemplo.mx',
+    },
   ];
   const base = (id: string, customerId: string, concept: string, amountCents: number, createdDaysAgo: number, dueInDays: number): StoredCharge => ({
     chargeId: id,
@@ -121,9 +172,9 @@ function seed(today: string): WorkspaceState {
   });
   const charges: StoredCharge[] = [
     { ...base('ch_001', 'cus_mateo', 'Mensualidad', 85_000, 2, 6), tags: ['mensualidad'] },
-    { ...base('ch_002', 'cus_sofia', 'Mensualidad anterior', 85_000, 20, -9), reminderCount: 2, tags: ['mensualidad'] },
+    { ...base('ch_002', 'cus_norte', 'Suministro mensual de refacciones', 185_000, 20, -9), reminderCount: 2, tags: ['empresa', 'refacciones'] },
     {
-      ...base('ch_003', 'cus_diego', 'Clase individual', 90_000, 8, -1),
+      ...base('ch_003', 'cus_roble', 'Mantenimiento eléctrico sucursal', 90_000, 8, -1),
       status: 'paid',
       paidAt: instant(addDays(today, -3), '12:30:00'),
       paymentMethod: 'codi',
@@ -174,8 +225,28 @@ function fail(status: number, message: string, code?: DashboardErrorCode, fields
 
 const normalize = (value: string) => value.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 
-function loadStoredState(contractorId: string): WorkspaceState {
-  if (typeof window === 'undefined') return emptyState();
+function toProfileRecord(customer: StoredCustomer): CustomerProfileRecord {
+  const entityType: CustomerEntityType = customer.entityType ?? (customer.business?.legalName ? 'company' : 'individual');
+  return {
+    customerId: customer.customerId,
+    entityType,
+    name: customer.name,
+    phone: customer.phone,
+    email: customer.email,
+    ...(customer.business ? { business: { ...customer.business } } : {}),
+  };
+}
+
+function customerDisplayName(customer: StoredCustomer): string {
+  const entityType = customer.entityType ?? 'individual';
+  if (entityType === 'company' && customer.business?.legalName) {
+    return customer.business.tradeName || customer.business.legalName;
+  }
+  return customer.name;
+}
+
+function loadStoredState(contractorId: string, fallbackToday: string): WorkspaceState {
+  if (typeof window === 'undefined') return seed(fallbackToday);
   try {
     const raw = window.localStorage.getItem(`${STORAGE_PREFIX}${contractorId}`);
     if (!raw) return emptyState();
@@ -233,7 +304,8 @@ export function createMockDashboard(): MockDashboard {
   }
 
   function customerName(state: WorkspaceState, id: string): string {
-    return state.customers.find((c) => c.customerId === id)?.name ?? 'Cliente';
+    const customer = state.customers.find((c) => c.customerId === id);
+    return customer ? customerDisplayName(customer) : 'Cliente';
   }
 
   const isOverdue = (charge: StoredCharge) => charge.status === 'pending' && charge.dueDate < today();
@@ -294,7 +366,7 @@ export function createMockDashboard(): MockDashboard {
     const standing: CustomerStanding = overdue.length ? 'overdue' : pending.length ? 'pending' : 'up_to_date';
     return {
       customerId: customer.customerId,
-      name: customer.name,
+      name: customerDisplayName(customer),
       standing,
       balance: {
         outstandingCents: pending.reduce((sum, charge) => sum + charge.amountCents, 0),
@@ -342,6 +414,7 @@ export function createMockDashboard(): MockDashboard {
         customers: [
           {
             customerId: 'cus_first',
+            entityType: 'individual',
             name: firstCustomer.name,
             phone,
             email: firstCustomer.email,
@@ -352,17 +425,18 @@ export function createMockDashboard(): MockDashboard {
       saveState(contractorId, updated);
     },
 
+    listDetails(contractorId) {
+      const state = getState(contractorId);
+      return Object.fromEntries(state.customers.map((customer) => [customer.customerId, toProfileRecord(customer)]));
+    },
+
     listPhones(contractorId) {
       const state = getState(contractorId);
       return Object.fromEntries(state.customers.map((customer) => [customer.customerId, customer.phone]));
     },
 
     async createCustomer(contractorId, input: NewCustomerInput) {
-      const normalized: NewCustomerInput = {
-        name: input.name.trim(),
-        phone: mxPhoneDigits(input.phone),
-        email: input.email.trim(),
-      };
+      const normalized = normalizeNewCustomerInput(input);
       const errors = validateNewCustomer(normalized);
       if (Object.keys(errors).length) {
         fail(422, MESSAGES.invalidCustomer, undefined, errors as Record<string, string>);
@@ -371,9 +445,11 @@ export function createMockDashboard(): MockDashboard {
       const nextSequence = state.customerSequence + 1;
       const created: StoredCustomer = {
         customerId: `cus_${String(nextSequence).padStart(3, '0')}`,
+        entityType: normalized.entityType,
         name: normalized.name,
         phone: normalized.phone,
         email: normalized.email,
+        ...(normalized.business ? { business: normalized.business } : {}),
       };
       const nextState: WorkspaceState = {
         ...state,
@@ -382,6 +458,32 @@ export function createMockDashboard(): MockDashboard {
       };
       saveState(contractorId, nextState);
       return buildCustomerRow(nextState, created);
+    },
+
+    async updateCustomer(contractorId, customerId, input: NewCustomerInput) {
+      const normalized = normalizeNewCustomerInput(input);
+      const errors = validateNewCustomer(normalized);
+      if (Object.keys(errors).length) {
+        fail(422, MESSAGES.invalidCustomer, undefined, errors as Record<string, string>);
+      }
+      const state = getState(contractorId);
+      const target = state.customers.find((customer) => customer.customerId === customerId);
+      if (!target) fail(404, MESSAGES.customerNotFound);
+
+      const updatedCustomer: StoredCustomer = {
+        customerId,
+        entityType: normalized.entityType,
+        name: normalized.name,
+        phone: normalized.phone,
+        email: normalized.email,
+        ...(normalized.business ? { business: normalized.business } : {}),
+      };
+      const nextState: WorkspaceState = {
+        ...state,
+        customers: state.customers.map((customer) => (customer.customerId === customerId ? updatedCustomer : customer)),
+      };
+      saveState(contractorId, nextState);
+      return buildCustomerRow(nextState, updatedCustomer);
     },
 
     async summary(contractorId, query = {}) {
@@ -471,9 +573,22 @@ export function createMockDashboard(): MockDashboard {
     async customers(contractorId, query = {}) {
       const state = getState(contractorId);
       const term = query.search ? normalize(query.search) : '';
+      const matchesTerm = (customer: StoredCustomer) => {
+        if (!term) return true;
+        const fields = [
+          customer.name,
+          customer.email,
+          customer.phone,
+          customer.business?.legalName,
+          customer.business?.tradeName,
+          customer.business?.rfc,
+          customer.business?.activity,
+        ];
+        return fields.some((value) => value && normalize(value).includes(term));
+      };
       const all = state.customers
-        .map((customer) => buildCustomerRow(state, customer))
-        .filter((row) => !term || normalize(row.name).includes(term));
+        .filter(matchesTerm)
+        .map((customer) => buildCustomerRow(state, customer));
       return {
         customers: all.filter((row) => !query.standing || row.standing === query.standing),
         counts: {
