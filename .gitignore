@@ -6,3 +6,8 @@ coverage/
 !.env.example
 .DS_Store
 *.tsbuildinfo
+
+# Cloudflare (wrangler)
+.wrangler/
+.dev.vars
+.dev.vars.*
