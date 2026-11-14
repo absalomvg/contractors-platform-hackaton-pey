@@ -17,7 +17,7 @@ npm run dev
 - Backend: http://127.0.0.1:3001/api/health
 - Contratistas: http://127.0.0.1:3001/api/contractors
 
-Vite redirige `/api` al backend durante desarrollo. El formulario de onboarding crea y consulta registros en memoria. El listado de contratistas es una colección vacía de arranque. No incluye autenticación ni persistencia.
+Vite redirige `/api` al backend durante desarrollo. El formulario de onboarding crea y consulta registros. Por defecto se guardan en memoria; con `DATABASE_PATH=/ruta/app.db` el backend usa SQLite (Docker y Cloudflare ya lo activan). El listado de contratistas es una colección vacía de arranque. No incluye autenticación.
 
 ## Docker
 
@@ -31,7 +31,7 @@ npm run docker:down    # o: docker compose down
 - Frontend (Vite con recarga en caliente): http://localhost:5173
 - Backend: http://localhost:3001/api/health
 
-El código se monta como volumen, así que los cambios del frontend se recargan solos. El backend corre con `go run`; tras cambios Go ejecuta `docker compose restart backend`. Si esos puertos están ocupados, cámbialos con `FRONTEND_PORT`, `BACKEND_PORT`, `API_PORT` o `WEB_PORT` (p. ej. `FRONTEND_PORT=5174 docker compose up`). Las dependencias de Node y los cachés de Go viven en volúmenes de Docker (no se mezclan con el `node_modules` del host). Si cambias `package.json`, ejecuta `docker compose down -v` y vuelve a levantar. Dentro de Compose el proxy de Vite apunta al servicio `backend` mediante `VITE_API_PROXY_TARGET`; sin Docker usa `http://127.0.0.1:3001`.
+El código se monta como volumen, así que los cambios del frontend se recargan solos. El backend corre con `go run`; tras cambios Go ejecuta `docker compose restart backend`. Si esos puertos están ocupados, cámbialos con `FRONTEND_PORT`, `BACKEND_PORT`, `API_PORT` o `WEB_PORT` (p. ej. `FRONTEND_PORT=5174 docker compose up`). Las dependencias de Node y los cachés de Go viven en volúmenes de Docker (no se mezclan con el `node_modules` del host). La base SQLite vive en el volumen `backend-data`; `docker compose down -v` la borra y deja datos limpios para pruebas e2e. Si cambias `package.json`, ejecuta `docker compose down -v` y vuelve a levantar. Dentro de Compose el proxy de Vite apunta al servicio `backend` mediante `VITE_API_PROXY_TARGET`; sin Docker usa `http://127.0.0.1:3001`.
 
 Perfil prod-like, con el frontend compilado en nginx (SPA y proxy `/api`) y la imagen de producción de la API:
 
@@ -58,7 +58,7 @@ apps/
     internal/modules/onboarding/
       domain/                # Modelo, validación y puerto de repositorio
       application/           # Casos de uso
-      infrastructure/        # Repositorio en memoria con sincronización
+      infrastructure/        # Repositorios en memoria y SQLite
       presentation/          # Adaptador HTTP
       module.go              # API pública del módulo
 packages/

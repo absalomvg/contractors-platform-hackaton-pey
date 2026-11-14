@@ -31,7 +31,7 @@ npm run deploy:dry-run
 
 `deploy:dry-run` valida el empaquetado del Worker sin publicarlo; no sustituye la prueba de ejecución del contenedor. Para probar Worker y contenedor juntos, ejecutar `npm run dev:edge` con Docker activo. Para publicar manualmente después de configurar las credenciales y compilar el frontend: `npm run deploy`.
 
-El repositorio Go sigue en memoria. Los registros desaparecen cuando el contenedor se suspende, reinicia o actualiza. La instancia única conserva el estado entre peticiones mientras permanece activa; no sustituye almacenamiento persistente.
+El backend guarda los datos en SQLite (`DATABASE_PATH=/data/app.db`, definido en `apps/backend/Dockerfile`) sobre el disco del contenedor. Los registros desaparecen cuando el contenedor se suspende (15 minutos sin tráfico), reinicia o se redespliega: sirve para demos y pruebas e2e, no como almacenamiento persistente. Para persistir, reemplazar el repositorio por D1 u otra base externa.
 
 ## Referencias
 
