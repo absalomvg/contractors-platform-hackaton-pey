@@ -293,7 +293,7 @@ export function createMockDashboard(): MockDashboard {
   function getState(contractorId: string): WorkspaceState {
     const existing = states.get(contractorId);
     if (existing) return existing;
-    const loaded = loadStoredState(contractorId);
+    const loaded = loadStoredState(contractorId, today());
     states.set(contractorId, loaded);
     return loaded;
   }

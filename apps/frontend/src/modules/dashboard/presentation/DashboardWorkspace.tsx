@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import type {
   DashboardChargeDto,
   DashboardChargesDto,
@@ -73,6 +73,11 @@ export function DashboardWorkspace({
   const [charges, setCharges] = useState<DashboardChargesDto | null>(null);
   const [customers, setCustomers] = useState<DashboardCustomersDto | null>(null);
   const [customerDetails, setCustomerDetails] = useState<Record<string, CustomerProfileRecord>>({});
+  // FirstChargeStepper only needs phones; derive them from the customer details.
+  const customerPhones = useMemo(
+    () => Object.fromEntries(Object.entries(customerDetails).map(([id, details]) => [id, details.phone])),
+    [customerDetails],
+  );
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
