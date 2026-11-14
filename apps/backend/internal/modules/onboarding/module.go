@@ -7,19 +7,19 @@ import (
 	"net/http"
 )
 
-// Record is the onboarding record exposed to other modules.
+// Record es el alta que otros módulos pueden leer.
 type Record = domain.Onboarding
 
-// Reader is the read-only public API other modules use to query onboarding.
+// Reader es la lectura pública del usuario guardado.
 type Reader interface {
 	Find(id string) (Record, bool)
 }
 
-// Register mounts the onboarding routes and returns its public Reader.
+// Register publica las rutas y devuelve la lectura del usuario.
 func Register(mux *http.ServeMux, repository domain.Repository) Reader {
-	service := application.New(repository)
-	handler := presentation.New(service)
+	read := application.NewReadUser(repository)
+	handler := presentation.New(application.NewRegisterUser(repository), read)
 	mux.HandleFunc("POST /api/onboarding", handler.Create)
 	mux.HandleFunc("GET /api/onboarding/{id}", handler.Find)
-	return service
+	return read
 }

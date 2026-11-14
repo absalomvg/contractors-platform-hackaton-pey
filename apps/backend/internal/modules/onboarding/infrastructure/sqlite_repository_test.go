@@ -22,13 +22,13 @@ func TestSQLiteRepositoryPersistsAcrossReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, err := repository.Create(input)
+	created, err := repository.Save(mustUser(t, input))
 	if err != nil {
 		t.Fatal(err)
 	}
 	withoutTax := input
 	withoutTax.TaxRegime = nil
-	other, err := repository.Create(withoutTax)
+	other, err := repository.Save(mustUser(t, withoutTax))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestSQLiteRepositoryPersistsAcrossReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []domain.Onboarding{created, other} {
+	for _, want := range []domain.User{created, other} {
 		got, found := repository.Find(want.ID)
 		if !found || !reflect.DeepEqual(got, want) {
 			t.Fatalf("find %s: found=%v got=%+v want=%+v", want.ID, found, got, want)
@@ -82,11 +82,22 @@ func TestSQLiteRepositoryMigratesLegacyTable(t *testing.T) {
 	if !found || legacy.CLABE != "" {
 		t.Fatalf("legacy record: found=%v %+v", found, legacy)
 	}
-	created, err := repository.Create(domain.Input{Name: "Ana", RFC: "AAA010101AAA", CLABE: "002010077777777771"})
+	input := domain.Input{Name: "Ana", Profession: "Electrician", Client: domain.Client{Name: "Luis", Phone: "+52 555 123 4567", Email: "luis@example.com"},
+		BusinessName: "Electrical Services", BusinessActivity: "Electrical installations", RFC: "AAA010101AAA", CLABE: "002010077777777771"}
+	created, err := repository.Save(mustUser(t, input))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := repository.Find(created.ID); got.CLABE != "002010077777777771" {
 		t.Fatalf("clabe not persisted: %+v", got)
 	}
+}
+
+func mustUser(t *testing.T, input domain.Input) domain.User {
+	t.Helper()
+	user, fieldErrors := domain.Build(input)
+	if len(fieldErrors) > 0 {
+		t.Fatalf("build: %v", fieldErrors)
+	}
+	return user
 }

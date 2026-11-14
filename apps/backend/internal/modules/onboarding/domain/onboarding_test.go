@@ -19,8 +19,7 @@ func TestValidClabe(t *testing.T) {
 }
 
 func TestNormalizeStripsClabeSeparators(t *testing.T) {
-	input := Input{CLABE: " 002 010-0777 7777 7771 "}
-	input.Normalize()
+	input := normalize(Input{CLABE: " 002 010-0777 7777 7771 "})
 	if input.CLABE != "002010077777777771" {
 		t.Fatalf("got %q", input.CLABE)
 	}
