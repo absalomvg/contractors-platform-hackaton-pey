@@ -6,17 +6,19 @@ import {
   QUICK_AMOUNT_PESOS,
   QUICK_CONCEPTS,
   QUICK_PAYMENT_METHODS,
+  customerDisplayLabel,
   formatDate,
   formatMxnCents,
   pesosToCents,
   todayInMexico,
+  type CustomerProfileRecord,
 } from '../domain/dashboard';
 import { ArrowRightIcon, CheckIcon, CodiQrGraphic, CopyIcon, LinkIcon, PlusIcon, QrCodeIcon, ShareIcon } from './DashboardIcons';
 
 interface QuickPaymentsViewProps {
   readonly profile: DashboardProfileDto;
   readonly customers: readonly CustomerRowDto[];
-  readonly customerPhones: Readonly<Record<string, string>>;
+  readonly customerDetails: Readonly<Record<string, CustomerProfileRecord>>;
   readonly selectedCustomerId: string;
   readonly clabeLabel: string;
   readonly onSelectCustomer: (customerId: string) => void;
@@ -35,7 +37,7 @@ interface QuickPaymentsViewProps {
 export function QuickPaymentsView({
   profile,
   customers,
-  customerPhones,
+  customerDetails,
   selectedCustomerId,
   clabeLabel,
   onSelectCustomer,
@@ -55,7 +57,8 @@ export function QuickPaymentsView({
 
   const activeCustomer = customers.find((row) => row.customerId === selectedCustomerId) ?? customers[0];
   const effectiveCustomerId = activeCustomer?.customerId ?? '';
-  const activePhone = effectiveCustomerId ? customerPhones[effectiveCustomerId] : undefined;
+  const activeDetail = effectiveCustomerId ? customerDetails[effectiveCustomerId] : undefined;
+  const activePhone = activeDetail?.phone;
   const previewAmountCents = pesosToCents(amount) ?? 0;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -126,11 +129,14 @@ export function QuickPaymentsView({
               }}
               disabled={busy || customers.length === 0}
             >
-              {customers.map((row) => (
-                <option key={row.customerId} value={row.customerId}>
-                  {row.name}
-                </option>
-              ))}
+              {customers.map((row) => {
+                const detail = customerDetails[row.customerId];
+                return (
+                  <option key={row.customerId} value={row.customerId}>
+                    {detail ? customerDisplayLabel(detail) : row.name}
+                  </option>
+                );
+              })}
             </select>
           </div>
 

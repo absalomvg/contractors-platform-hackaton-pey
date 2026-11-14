@@ -25,6 +25,27 @@ export const MANUAL_PAYMENT_METHODS: readonly ManualPaymentMethod[] = ['cash', '
 export const QUICK_AMOUNT_PESOS = [250, 500, 1000, 1500] as const;
 export const QUICK_CONCEPTS = ['Anticipo', 'Servicio', 'Mensualidad', 'Liquidación'] as const;
 
+export const CUSTOMER_ACTIVITIES = [
+  'Comercio y abarrotes',
+  'Construcción y remodelación',
+  'Alimentos y bebidas',
+  'Servicios profesionales y consultoría',
+  'Salud y bienestar',
+  'Educación y capacitación',
+  'Tecnología y soporte',
+  'Transporte y logística',
+  'Manufactura y talleres',
+  'Otro',
+] as const;
+
+export const CUSTOMER_TAX_REGIMES = [
+  '601 - General de Ley Personas Morales',
+  '603 - Personas Morales con Fines no Lucrativos',
+  '612 - Personas Físicas con Actividades Empresariales',
+  '626 - Régimen Simplificado de Confianza (RESICO)',
+  '621 - Incorporación Fiscal',
+] as const;
+
 export const QUICK_PAYMENT_METHODS: readonly {
   readonly id: PaymentMethodDto;
   readonly title: string;
@@ -107,13 +128,60 @@ export const CHARGE_FIELD_LABELS: Record<ChargeField, string> = {
   tags: 'Etiquetas',
 };
 
-export interface NewCustomerInput {
+export type CustomerEntityType = 'individual' | 'company';
+
+export const CUSTOMER_ENTITY_LABELS: Record<CustomerEntityType, string> = {
+  individual: 'Persona física',
+  company: 'Persona moral / Comercio',
+};
+
+export interface CustomerBusinessDetails {
+  /** Legal corporate name or merchant name (required when entityType === 'company'). */
+  legalName: string;
+  /** Commercial brand name when it differs from legalName. */
+  tradeName?: string;
+  /** Mexican RFC: 12 chars for companies, 13 for individuals with business activity. */
+  rfc?: string;
+  /** Line of business or activity. */
+  activity?: string;
+  /** SAT tax regime label. */
+  taxRegime?: string;
+  /** Fiscal address, branch location, or billing note. */
+  fiscalAddress?: string;
+}
+
+export interface CustomerProfileRecord {
+  customerId: string;
+  entityType: CustomerEntityType;
+  /** Person name (for individuals) or main payment contact (for companies/merchants). */
   name: string;
   phone: string;
   email: string;
+  business?: CustomerBusinessDetails;
 }
 
-export type CustomerFieldErrors = Partial<Record<keyof NewCustomerInput, string>>;
+export interface NewCustomerInput {
+  entityType: CustomerEntityType;
+  name: string;
+  phone: string;
+  email: string;
+  business?: CustomerBusinessDetails;
+}
+
+export type CustomerFieldName =
+  | 'name'
+  | 'phone'
+  | 'email'
+  | 'legalName'
+  | 'tradeName'
+  | 'rfc'
+  | 'activity'
+  | 'taxRegime'
+  | 'fiscalAddress';
+
+export type CustomerFieldErrors = Partial<Record<CustomerFieldName, string>>;
+
+const RFC_PATTERN = /^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/;
 
 /** Keeps up to 10 Mexican mobile digits; drops a pasted +52 / 52 prefix. */
 export function mxPhoneDigits(value: string): string {
@@ -127,26 +195,99 @@ export function formatMxPhone(digits: string): string {
   return [digits.slice(0, 2), digits.slice(2, 6), digits.slice(6, 10)].filter(Boolean).join(' ');
 }
 
+/** Returns SAT classification label based on RFC length when present. */
+export function rfcKindLabel(rfc?: string): string | null {
+  if (!rfc) return null;
+  if (rfc.length === 12) return 'Persona moral (12)';
+  if (rfc.length === 13) return 'Persona física (13)';
+  return null;
+}
+
+/** Normalizes optional business fields and trims whitespace before validation/storage. */
+export function normalizeNewCustomerInput(input: NewCustomerInput): NewCustomerInput {
+  const rawBiz = input.business;
+  const legalName = rawBiz?.legalName.trim() ?? '';
+  const tradeName = rawBiz?.tradeName?.trim() || undefined;
+  const rfc = rawBiz?.rfc?.trim().toUpperCase() || undefined;
+  const activity = rawBiz?.activity?.trim() || undefined;
+  const taxRegime = rawBiz?.taxRegime?.trim() || undefined;
+  const fiscalAddress = rawBiz?.fiscalAddress?.trim() || undefined;
+
+  const hasAnyBusiness = Boolean(legalName || tradeName || rfc || activity || taxRegime || fiscalAddress);
+  const business: CustomerBusinessDetails | undefined =
+    input.entityType === 'company' || hasAnyBusiness
+      ? {
+          legalName,
+          ...(tradeName ? { tradeName } : {}),
+          ...(rfc ? { rfc } : {}),
+          ...(activity ? { activity } : {}),
+          ...(taxRegime ? { taxRegime } : {}),
+          ...(fiscalAddress ? { fiscalAddress } : {}),
+        }
+      : undefined;
+
+  return {
+    entityType: input.entityType,
+    name: input.name.trim(),
+    phone: mxPhoneDigits(input.phone),
+    email: input.email.trim(),
+    ...(business ? { business } : {}),
+  };
+}
+
 export function validateNewCustomer(input: NewCustomerInput): CustomerFieldErrors {
+  const normalized = normalizeNewCustomerInput(input);
   const errors: CustomerFieldErrors = {};
-  if (!input.name.trim()) {
-    errors.name = 'Ingresa el nombre del cliente.';
-  } else if (input.name.trim().length > 255) {
+
+  if (!normalized.name) {
+    errors.name =
+      normalized.entityType === 'company'
+        ? 'Ingresa el nombre del contacto o responsable de pagos.'
+        : 'Ingresa el nombre completo del cliente.';
+  } else if (normalized.name.length > 255) {
     errors.name = 'Usa un máximo de 255 caracteres.';
   }
-  const phone = mxPhoneDigits(input.phone);
-  if (!phone) {
+
+  if (!normalized.phone) {
     errors.phone = 'Ingresa el teléfono del cliente.';
-  } else if (!/^\d{10}$/.test(phone)) {
+  } else if (!/^\d{10}$/.test(normalized.phone)) {
     errors.phone = `Escribe un teléfono de ${MX_PHONE_DIGITS} dígitos.`;
   }
-  const email = input.email.trim();
-  if (!email) {
+
+  if (!normalized.email) {
     errors.email = 'Ingresa el correo del cliente.';
-  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized.email)) {
     errors.email = 'Escribe un correo válido.';
   }
+
+  const biz = normalized.business;
+  if (normalized.entityType === 'company') {
+    if (!biz?.legalName) {
+      errors.legalName = 'Ingresa la razón social o nombre del negocio.';
+    } else if (biz.legalName.length > 255) {
+      errors.legalName = 'Usa un máximo de 255 caracteres.';
+    }
+  } else if (biz?.legalName && biz.legalName.length > 255) {
+    errors.legalName = 'Usa un máximo de 255 caracteres.';
+  }
+
+  if (biz?.tradeName && biz.tradeName.length > 255) errors.tradeName = 'Usa un máximo de 255 caracteres.';
+  if (biz?.rfc && !RFC_PATTERN.test(biz.rfc)) {
+    errors.rfc = 'Escribe un RFC válido de 12 (empresa) o 13 caracteres (persona física).';
+  }
+  if (biz?.activity && biz.activity.length > 255) errors.activity = 'Usa un máximo de 255 caracteres.';
+  if (biz?.taxRegime && biz.taxRegime.length > 255) errors.taxRegime = 'Usa un máximo de 255 caracteres.';
+  if (biz?.fiscalAddress && biz.fiscalAddress.length > 500) errors.fiscalAddress = 'Usa un máximo de 500 caracteres.';
+
   return errors;
+}
+
+/** Display title used across selectors, charge lists, and customer cards. */
+export function customerDisplayLabel(record: Pick<CustomerProfileRecord, 'entityType' | 'name' | 'business'>): string {
+  if (record.entityType === 'company' && record.business?.legalName) {
+    return `${record.business.legalName} (${record.name})`;
+  }
+  return record.business?.tradeName ? `${record.name} · ${record.business.tradeName}` : record.name;
 }
 
 export function canEdit(charge: DashboardChargeDto, field: ChargeField): boolean {

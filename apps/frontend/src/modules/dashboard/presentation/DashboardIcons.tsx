@@ -134,6 +134,16 @@ export function ArrowRightIcon() {
   );
 }
 
+export function BuildingIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M4 21V5a2 2 0 012-2h8a2 2 0 012 2v16" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M16 10h2a2 2 0 012 2v9M2 21h20" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8 7h4M8 11h4M8 15h4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function CodiQrGraphic() {
   return (
     <svg className="db-qr-svg" viewBox="0 0 120 120" aria-label="Código QR CoDi">

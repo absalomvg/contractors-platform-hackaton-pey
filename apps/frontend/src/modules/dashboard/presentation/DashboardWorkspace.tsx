@@ -22,6 +22,7 @@ import {
   parseTags,
   pesosToCents,
   type ChargeFilter,
+  type CustomerProfileRecord,
   type DashboardScreen,
   type NewCustomerInput,
 } from '../domain/dashboard';
@@ -70,7 +71,7 @@ export function DashboardWorkspace({
   const [allCharges, setAllCharges] = useState<DashboardChargeDto[]>([]);
   const [charges, setCharges] = useState<DashboardChargesDto | null>(null);
   const [customers, setCustomers] = useState<DashboardCustomersDto | null>(null);
-  const [customerPhones, setCustomerPhones] = useState<Record<string, string>>({});
+  const [customerDetails, setCustomerDetails] = useState<Record<string, CustomerProfileRecord>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -107,7 +108,7 @@ export function DashboardWorkspace({
       setAllCharges(everyCharge.charges);
       setCharges(filtered);
       setCustomers(nextCustomers);
-      setCustomerPhones(customersDirectory.listPhones(contractorId));
+      setCustomerDetails(customersDirectory.listDetails(contractorId));
       setLoadError(null);
       setSelectedCustomerId((current) => {
         if (current && nextCustomers.customers.some((row) => row.customerId === current)) return current;
@@ -162,7 +163,7 @@ export function DashboardWorkspace({
 
   function handleSendReminder(charge: DashboardChargeDto, channel: 'WhatsApp' | 'Correo') {
     if (channel === 'WhatsApp') {
-      const phone = customerPhones[charge.customerId];
+      const phone = customerDetails[charge.customerId]?.phone;
       if (phone) {
         const message = `Hola ${charge.customerName}, te recordamos tu cobro pendiente de ${formatMxnCents(charge.amountCents)} (${charge.concept}).`;
         window.open(`https://wa.me/52${phone}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
@@ -232,6 +233,13 @@ export function DashboardWorkspace({
     notify(`Cliente registrado: ${created.name}.`);
     reload();
     return created;
+  }
+
+  async function handleUpdateCustomer(customerId: string, input: NewCustomerInput) {
+    const updated = await customersDirectory.updateCustomer(contractorId, customerId, input);
+    notify(`Cliente actualizado: ${updated.name}.`);
+    reload();
+    return updated;
   }
 
   if (loadError) {
@@ -364,7 +372,7 @@ export function DashboardWorkspace({
           <QuickPaymentsView
             profile={profile}
             customers={customers.customers}
-            customerPhones={customerPhones}
+            customerDetails={customerDetails}
             selectedCustomerId={selectedCustomerId}
             clabeLabel={clabeLabel}
             onSelectCustomer={setSelectedCustomerId}
@@ -382,8 +390,9 @@ export function DashboardWorkspace({
           <CustomersView
             customersData={customers}
             summary={summary}
-            customerPhones={customerPhones}
+            customerDetails={customerDetails}
             onCreateCustomer={handleCreateCustomer}
+            onUpdateCustomer={handleUpdateCustomer}
             onChargeCustomer={(customerId) => {
               setSelectedCustomerId(customerId);
               setScreen('payment');

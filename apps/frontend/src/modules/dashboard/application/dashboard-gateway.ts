@@ -14,7 +14,7 @@ import type {
   PeriodQuery,
   UpdateDashboardChargeRequest,
 } from '@platform/contracts';
-import type { NewCustomerInput } from '../domain/dashboard';
+import type { CustomerProfileRecord, NewCustomerInput } from '../domain/dashboard';
 
 /** Endpoints of the dashboard contract (/api/contractors/{contractorId}/dashboard/*). */
 export interface DashboardGateway {
@@ -27,9 +27,11 @@ export interface DashboardGateway {
   cancelCharge(contractorId: string, chargeId: string, body: CancelChargeRequest): Promise<DashboardChargeDto>;
 }
 
-/** Customer creation and phone lookup directory (local until backend exposes POST /customers). */
+/** Customer creation, business profile editing, and full directory lookup. */
 export interface CustomersDirectoryGateway {
   createCustomer(contractorId: string, input: NewCustomerInput): Promise<CustomerRowDto>;
+  updateCustomer(contractorId: string, customerId: string, input: NewCustomerInput): Promise<CustomerRowDto>;
+  listDetails(contractorId: string): Record<string, CustomerProfileRecord>;
   listPhones(contractorId: string): Record<string, string>;
   syncFirstCustomer(contractorId: string, firstCustomer: { name: string; phone: string; email: string }): void;
 }

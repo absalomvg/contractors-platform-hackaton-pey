@@ -1020,14 +1020,130 @@
   }
 }
 
+/* Customer Entity Type Selector & Full Business Card Details */
+.db-segmented {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--db-space-2);
+}
+
+.db-segmented-btn {
+  min-height: 48px;
+  padding: var(--db-space-2) var(--db-space-3);
+  border-radius: var(--db-radius-sm);
+  border: 1.5px solid var(--db-border-strong);
+  background: var(--db-surface);
+  color: var(--db-ink-muted);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--db-space-2);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+
+.db-segmented-btn[aria-pressed='true'] {
+  background: var(--db-primary);
+  border-color: var(--db-primary);
+  color: var(--db-primary-ink);
+}
+
+.db-company-box {
+  padding: var(--db-space-3);
+  border-radius: var(--db-radius-sm);
+  border: 1px solid var(--db-border);
+  background: var(--db-surface-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--db-space-3);
+}
+
+.db-company-box-title {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--db-ink-muted);
+}
+
+.db-badge.is-company {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.db-badge.is-individual {
+  background: var(--db-surface-muted);
+  color: var(--db-ink-muted);
+  border: 1px solid var(--db-border);
+}
+
+.db-customer-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--db-space-2);
+}
+
+.db-customer-details {
+  margin: 0;
+  padding: var(--db-space-3);
+  border-radius: var(--db-radius-sm);
+  background: var(--db-surface-muted);
+  border: 1px solid var(--db-border);
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--db-space-2);
+}
+
+.db-customer-details-item {
+  min-width: 0;
+}
+
+.db-customer-details dt {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--db-ink-muted);
+}
+
+.db-customer-details dd {
+  margin: 2px 0 0;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--db-ink);
+  word-break: break-word;
+}
+
+.db-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.db-field-span-2 {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 768px) {
+  .db-customer-details {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (min-width: 1024px) {
   .db-clients-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .db-quick-tile,
+  .db-segmented-btn,
   .db-shell .form-field input,
   .db-shell .form-field select,
   .db-search-input,
