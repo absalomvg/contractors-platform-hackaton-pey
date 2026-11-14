@@ -1,7 +1,17 @@
 name: CI
-on: [push, pull_request]
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
 jobs:
   check:
+    name: Validate applications and Cloudflare package
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,3 +25,5 @@ jobs:
           cache: false
       - run: npm ci
       - run: npm run check
+      - name: Validate Worker and Go container package
+        run: npm run deploy:dry-run
