@@ -22,16 +22,27 @@ func NewMemoryRepository() *MemoryRepository {
 }
 
 func cloneUser(user domain.User) domain.User {
-	user.TaxRegime = copyText(user.TaxRegime)
+	user.TaxRegime = domain.CopyText(user.TaxRegime)
 	return user
 }
 
-func copyText(value *string) *string {
-	if value == nil {
-		return nil
+// HasCLABE indica si otro usuario ya guardó esa CLABE.
+func (repository *MemoryRepository) HasCLABE(clabe string) (bool, error) {
+	if clabe == "" {
+		return false, nil
 	}
-	copy := *value
-	return &copy
+	repository.mutex.RLock()
+	defer repository.mutex.RUnlock()
+	return containsCLABE(repository.records, clabe), nil
+}
+
+func containsCLABE(records map[string]domain.User, clabe string) bool {
+	for _, user := range records {
+		if user.CLABE == clabe {
+			return true
+		}
+	}
+	return false
 }
 
 // Save persiste el usuario si el contrato lo permite y le asigna un id.
@@ -47,6 +58,9 @@ func (repository *MemoryRepository) Save(user domain.User) (domain.User, error) 
 	stored := cloneUser(user)
 	repository.mutex.Lock()
 	defer repository.mutex.Unlock()
+	if stored.CLABE != "" && containsCLABE(repository.records, stored.CLABE) {
+		return domain.User{}, domain.ErrCLABETaken
+	}
 	repository.records[stored.ID] = stored
 	return cloneUser(stored), nil
 }

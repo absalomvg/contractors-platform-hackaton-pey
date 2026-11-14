@@ -4,6 +4,7 @@ import (
 	"bytes"
 	dashboarddomain "contractors-platform/backend/internal/modules/dashboard/domain"
 	dashboardpresentation "contractors-platform/backend/internal/modules/dashboard/presentation"
+	"contractors-platform/backend/internal/modules/onboarding/definitions"
 	"contractors-platform/backend/internal/modules/onboarding/infrastructure"
 	"contractors-platform/backend/internal/platform/database"
 	"encoding/json"
@@ -97,6 +98,31 @@ func TestInvalidFormats(t *testing.T) {
 				t.Fatalf("expected 422: %d", response.Code)
 			}
 		})
+	}
+}
+
+func TestDuplicateCLABE(t *testing.T) {
+	handler := New()
+	if response := submit(handler, validInput()); response.Code != http.StatusCreated {
+		t.Fatalf("first: %d %s", response.Code, response.Body)
+	}
+	again := validInput()
+	again["name"] = "Otro"
+	response := submit(handler, again)
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("duplicate: %d %s", response.Code, response.Body)
+	}
+	var result struct {
+		Errors map[string]string `json:"errors"`
+	}
+	_ = json.Unmarshal(response.Body.Bytes(), &result)
+	if result.Errors[definitions.FieldCLABE] != definitions.MessageCLABETaken {
+		t.Fatalf("field error: %s", response.Body)
+	}
+	other := validInput()
+	other["clabe"] = "012180001183597198"
+	if response := submit(handler, other); response.Code != http.StatusCreated {
+		t.Fatalf("other clabe: %d %s", response.Code, response.Body)
 	}
 }
 

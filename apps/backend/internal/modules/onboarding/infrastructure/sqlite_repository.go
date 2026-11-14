@@ -1,13 +1,13 @@
 package infrastructure
 
 import (
-	"contractors-platform/backend/internal/modules/onboarding/definitions"
 	"contractors-platform/backend/internal/modules/onboarding/domain"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
 	"errors"
 	"log"
+	"strings"
 )
 
 func onboardingSchema() string {
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS onboardings (
 	business_activity TEXT NOT NULL,
 	rfc               TEXT NOT NULL,
 	clabe             TEXT NOT NULL DEFAULT '',
-	codi_status       TEXT NOT NULL DEFAULT '` + definitions.CodiNotRegistered + `',
+	codi_status       TEXT NOT NULL DEFAULT '` + domain.NotRegisteredStatus() + `',
 	bank_account_id   TEXT NOT NULL DEFAULT '',
 	created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 )`
@@ -38,6 +38,9 @@ func NewSQLiteRepository(db *sql.DB) (*SQLiteRepository, error) {
 		return nil, err
 	}
 	if err := ensureUserColumns(db); err != nil {
+		return nil, err
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS onboardings_clabe_unique ON onboardings(clabe) WHERE clabe <> ''`); err != nil {
 		return nil, err
 	}
 	return &SQLiteRepository{db: db}, nil
@@ -63,7 +66,7 @@ func ensureUserColumns(db *sql.DB) error {
 		return err
 	}
 	if !present["codi_status"] {
-		if _, err := db.Exec(`ALTER TABLE onboardings ADD COLUMN codi_status TEXT NOT NULL DEFAULT '` + definitions.CodiNotRegistered + `'`); err != nil {
+		if _, err := db.Exec(`ALTER TABLE onboardings ADD COLUMN codi_status TEXT NOT NULL DEFAULT '` + domain.NotRegisteredStatus() + `'`); err != nil {
 			return err
 		}
 	}
@@ -80,22 +83,48 @@ func ensureUserColumns(db *sql.DB) error {
 	return nil
 }
 
+// HasCLABE indica si otro usuario ya guardó esa CLABE.
+func (repository *SQLiteRepository) HasCLABE(clabe string) (bool, error) {
+	if clabe == "" {
+		return false, nil
+	}
+	var found int
+	err := repository.db.QueryRow(`SELECT 1 FROM onboardings WHERE clabe = ? LIMIT 1`, clabe).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // Save guarda el usuario si el contrato lo permite y le asigna un id.
 func (repository *SQLiteRepository) Save(user domain.User) (domain.User, error) {
 	if fieldErrors := domain.Allow(user); len(fieldErrors) > 0 {
 		return domain.User{}, errRejected
+	}
+	taken, err := repository.HasCLABE(user.CLABE)
+	if err != nil {
+		return domain.User{}, err
+	}
+	if taken {
+		return domain.User{}, domain.ErrCLABETaken
 	}
 	var bytes [16]byte
 	if _, err := rand.Read(bytes[:]); err != nil {
 		return domain.User{}, err
 	}
 	user.ID = hex.EncodeToString(bytes[:])
-	_, err := repository.db.Exec(`INSERT INTO onboardings
+	_, err = repository.db.Exec(`INSERT INTO onboardings
 		(id, name, profession, client_name, client_phone, client_email, tax_regime, business_name, business_activity, rfc, clabe, codi_status, bank_account_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		user.ID, user.Name, user.Profession, user.Customer.Name, user.Customer.Phone, user.Customer.Email,
 		user.TaxRegime, user.BusinessName, user.BusinessActivity, user.RFC, user.CLABE, user.CodiStatus, user.BankAccountID)
 	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			return domain.User{}, domain.ErrCLABETaken
+		}
 		return domain.User{}, err
 	}
 	return cloneUser(user), nil
@@ -117,7 +146,7 @@ func (repository *SQLiteRepository) Find(id string) (domain.User, bool) {
 		return domain.User{}, false
 	}
 	if taxRegime.Valid {
-		user.TaxRegime = copyText(&taxRegime.String)
+		user.TaxRegime = domain.CopyText(&taxRegime.String)
 	}
 	return cloneUser(user), true
 }

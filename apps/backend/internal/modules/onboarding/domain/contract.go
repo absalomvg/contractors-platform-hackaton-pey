@@ -2,10 +2,14 @@ package domain
 
 import (
 	"contractors-platform/backend/internal/modules/onboarding/definitions"
+	"errors"
 	"net/mail"
 	"strings"
 	"unicode/utf8"
 )
+
+// ErrCLABETaken avisa al acto que la CLABE ya pertenece a otro usuario.
+var ErrCLABETaken = errors.New("clabe tomada")
 
 // Build normaliza el formulario y, si las reglas pasan, devuelve el usuario.
 func Build(input Input) (User, map[string]string) {
@@ -16,14 +20,14 @@ func Build(input Input) (User, map[string]string) {
 		BusinessName:     normalized.BusinessName,
 		BusinessActivity: normalized.BusinessActivity,
 		RFC:              normalized.RFC,
-		TaxRegime:        copyText(normalized.TaxRegime),
+		TaxRegime:        CopyText(normalized.TaxRegime),
 		CLABE:            normalized.CLABE,
 		Customer: Customer{
 			Name:  normalized.Client.Name,
 			Phone: normalized.Client.Phone,
 			Email: normalized.Client.Email,
 		},
-		CodiStatus: definitions.CodiNotRegistered,
+		CodiStatus: NotRegisteredStatus(),
 	}
 	if fieldErrors := Allow(user); len(fieldErrors) > 0 {
 		return User{}, fieldErrors
@@ -64,6 +68,19 @@ func Allow(user User) map[string]string {
 	return errors
 }
 
+// TakenCLABE informa el error del formulario cuando esa CLABE ya fue registrada.
+func TakenCLABE(clabe string, taken bool) map[string]string {
+	if !taken || clabe == "" {
+		return map[string]string{}
+	}
+	return map[string]string{definitions.FieldCLABE: definitions.MessageCLABETaken}
+}
+
+// NotRegisteredStatus es el estado CoDi de un usuario que todavía no se registra en Pey.
+func NotRegisteredStatus() string {
+	return definitions.CodiNotRegistered
+}
+
 // View proyecta el usuario al JSON que el formulario ya recibe.
 func View(user User) Onboarding {
 	return Onboarding{
@@ -72,7 +89,7 @@ func View(user User) Onboarding {
 			Name:             user.Name,
 			Profession:       user.Profession,
 			Client:           Client{Name: user.Customer.Name, Phone: user.Customer.Phone, Email: user.Customer.Email},
-			TaxRegime:        copyText(user.TaxRegime),
+			TaxRegime:        CopyText(user.TaxRegime),
 			BusinessName:     user.BusinessName,
 			BusinessActivity: user.BusinessActivity,
 			RFC:              user.RFC,
@@ -102,10 +119,10 @@ func normalize(input Input) Input {
 	return input
 }
 
-// clabeSeparators are stripped so pasted values like "002 010 ..." validate.
+// clabeSeparators quita espacios y guiones de una CLABE pegada.
 var clabeSeparators = strings.NewReplacer(" ", "", "-", "")
 
-// ValidClabe reports whether clabe has 18 digits and a correct check digit.
+// ValidClabe indica si la CLABE tiene 18 dígitos y el dígito verificador correcto.
 func ValidClabe(clabe string) bool {
 	if !definitions.CLABEPattern.MatchString(clabe) {
 		return false
@@ -140,7 +157,8 @@ func phoneAllowed(phone string) bool {
 	return digits >= definitions.PhoneMinDigits && digits <= definitions.PhoneMaxDigits
 }
 
-func copyText(value *string) *string {
+// CopyText devuelve una copia del texto para que el puntero no se comparta.
+func CopyText(value *string) *string {
 	if value == nil {
 		return nil
 	}

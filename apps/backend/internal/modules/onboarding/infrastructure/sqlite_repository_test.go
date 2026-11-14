@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"contractors-platform/backend/internal/modules/onboarding/domain"
 	"contractors-platform/backend/internal/platform/database"
+	"errors"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -28,6 +29,7 @@ func TestSQLiteRepositoryPersistsAcrossReopen(t *testing.T) {
 	}
 	withoutTax := input
 	withoutTax.TaxRegime = nil
+	withoutTax.CLABE = "012180001183597198"
 	other, err := repository.Save(mustUser(t, withoutTax))
 	if err != nil {
 		t.Fatal(err)
@@ -90,6 +92,9 @@ func TestSQLiteRepositoryMigratesLegacyTable(t *testing.T) {
 	}
 	if got, _ := repository.Find(created.ID); got.CLABE != "002010077777777771" {
 		t.Fatalf("clabe not persisted: %+v", got)
+	}
+	if _, err := repository.Save(mustUser(t, input)); !errors.Is(err, domain.ErrCLABETaken) {
+		t.Fatalf("duplicate clabe: %v", err)
 	}
 }
 

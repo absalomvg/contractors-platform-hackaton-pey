@@ -17,12 +17,13 @@ const (
 )
 
 const (
-	MessageRequired = "Este campo es obligatorio."
-	MessageMaxRunes = "Usa como máximo 255 caracteres."
-	MessageEmail    = "Ingresa un email válido."
-	MessagePhone    = "Ingresa un teléfono de 7 a 15 dígitos."
-	MessageRFC      = "Ingresa un RFC válido de 12 o 13 caracteres."
-	MessageCLABE    = "Ingresa una CLABE válida de 18 dígitos."
+	MessageRequired   = "Este campo es obligatorio."
+	MessageMaxRunes   = "Usa como máximo 255 caracteres."
+	MessageEmail      = "Ingresa un email válido."
+	MessagePhone      = "Ingresa un teléfono de 7 a 15 dígitos."
+	MessageRFC        = "Ingresa un RFC válido de 12 o 13 caracteres."
+	MessageCLABE      = "Ingresa una CLABE válida de 18 dígitos."
+	MessageCLABETaken = "Esta CLABE ya está registrada."
 )
 
 const (
