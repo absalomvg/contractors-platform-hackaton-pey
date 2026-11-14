@@ -2,6 +2,7 @@ import type { FieldErrors, Onboarding, OnboardingInput } from '../domain/onboard
 
 export interface OnboardingGateway {
   create(input: OnboardingInput): Promise<Onboarding>;
+  find(id: string, signal?: AbortSignal): Promise<Onboarding>;
 }
 
 export class OnboardingError extends Error {
