@@ -2,6 +2,8 @@ package app
 
 import (
 	"bytes"
+	dashboarddomain "contractors-platform/backend/internal/modules/dashboard/domain"
+	dashboardpresentation "contractors-platform/backend/internal/modules/dashboard/presentation"
 	"contractors-platform/backend/internal/modules/onboarding/infrastructure"
 	"contractors-platform/backend/internal/platform/database"
 	"encoding/json"
@@ -152,5 +154,50 @@ func TestCreateAndRetrieveWithSQLite(t *testing.T) {
 	handler.ServeHTTP(found, httptest.NewRequest(http.MethodGet, location, nil))
 	if found.Code != http.StatusOK || !strings.Contains(found.Body.String(), `"rfc":"AAA010101AAA"`) {
 		t.Fatalf("find: %d %s", found.Code, found.Body)
+	}
+}
+
+func TestDashboardProfile(t *testing.T) {
+	for _, withTax := range []bool{false, true} {
+		t.Run(map[bool]string{false: "incomplete onboarding", true: "complete onboarding"}[withTax], func(t *testing.T) {
+			handler := New()
+			input := validInput()
+			if withTax {
+				input["taxRegime"] = "General"
+			}
+			var created struct {
+				ID string `json:"id"`
+			}
+			_ = json.Unmarshal(submit(handler, input).Body.Bytes(), &created)
+			path := strings.Replace(dashboardpresentation.ProfilePath, "{"+dashboardpresentation.PathParamContractorID+"}", created.ID, 1)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+			if response.Code != http.StatusOK {
+				t.Fatalf("dashboard: %d %s", response.Code, response.Body)
+			}
+			var dashboard dashboardpresentation.ProfileResponse
+			if err := json.Unmarshal(response.Body.Bytes(), &dashboard); err != nil {
+				t.Fatal(err)
+			}
+			wantStatus, wantPending := dashboarddomain.OnboardingStatusIncomplete, 1
+			if withTax {
+				wantStatus, wantPending = dashboarddomain.OnboardingStatusComplete, 0
+			}
+			if dashboard.ContractorID != created.ID || dashboard.Name != "Ana" || dashboard.Contact.Email != "luis@example.com" ||
+				dashboard.Business.TaxpayerType != dashboarddomain.TaxpayerTypeCompany ||
+				dashboard.Onboarding.Status != wantStatus || len(dashboard.Onboarding.PendingFields) != wantPending ||
+				(dashboard.Business.TaxRegime != nil) != withTax {
+				t.Fatalf("unexpected dashboard: %s", response.Body)
+			}
+		})
+	}
+}
+
+func TestDashboardProfileNotFound(t *testing.T) {
+	path := strings.Replace(dashboardpresentation.ProfilePath, "{"+dashboardpresentation.PathParamContractorID+"}", "missing", 1)
+	response := httptest.NewRecorder()
+	New().ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", response.Code)
 	}
 }

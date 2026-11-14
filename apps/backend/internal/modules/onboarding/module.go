@@ -7,8 +7,19 @@ import (
 	"net/http"
 )
 
-func Register(mux *http.ServeMux, repository domain.Repository) {
-	handler := presentation.New(application.NewRegisterUser(repository), application.NewReadUser(repository))
+// Record es el alta que otros módulos pueden leer.
+type Record = domain.Onboarding
+
+// Reader es la lectura pública del usuario guardado.
+type Reader interface {
+	Find(id string) (Record, bool)
+}
+
+// Register publica las rutas y devuelve la lectura del usuario.
+func Register(mux *http.ServeMux, repository domain.Repository) Reader {
+	read := application.NewReadUser(repository)
+	handler := presentation.New(application.NewRegisterUser(repository), read)
 	mux.HandleFunc("POST /api/onboarding", handler.Create)
 	mux.HandleFunc("GET /api/onboarding/{id}", handler.Find)
+	return read
 }
