@@ -1,6 +1,12 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { OnboardingError, type OnboardingGateway } from '../application/onboarding-gateway';
-import { normalizeClabe, validateOnboarding, type FieldErrors, type OnboardingInput } from '../domain/onboarding';
+import {
+  BUSINESS_ACTIVITIES,
+  formatMxPhone,
+  mxPhoneDigits,
+  normalizeClabe,
+  OTHER_BUSINESS_ACTIVITY,
+  validateOnboarding, type FieldErrors, type OnboardingInput } from '../domain/onboarding';
 
 interface FieldConfig {
   readonly name: string;
@@ -11,6 +17,10 @@ interface FieldConfig {
   readonly inputMode?: 'numeric' | 'tel' | 'email';
   readonly maxLength?: number;
   readonly placeholder?: string;
+  /** Renders a select with these options instead of a text input. */
+  readonly options?: readonly string[];
+  /** Masks the input as a Mexican phone: +52 prefix, "55 1234 5678". */
+  readonly mask?: 'mxPhone';
 }
 
 /* `client.*` is the business's first customer (docs/workflow.md, Stage 1),
@@ -29,7 +39,7 @@ const sections: readonly { readonly title: string; readonly description: string;
     description: 'Así te verán tus clientes en cada cobro.',
     fields: [
       { name: 'businessName', label: 'Nombre del negocio', autoComplete: 'organization' },
-      { name: 'businessActivity', label: 'Giro del negocio', placeholder: 'Ej. Instalaciones eléctricas' },
+      { name: 'businessActivity', label: 'Giro del negocio', options: [...BUSINESS_ACTIVITIES, OTHER_BUSINESS_ACTIVITY] },
       { name: 'rfc', label: 'RFC', maxLength: 13, hint: '12 o 13 caracteres.' },
       { name: 'taxRegime', label: 'Régimen fiscal (opcional)', placeholder: 'Ej. RESICO' },
       {
@@ -46,7 +56,7 @@ const sections: readonly { readonly title: string; readonly description: string;
     description: 'La persona a la que le harás tu primer cobro. Podrás agregar más clientes después.',
     fields: [
       { name: 'client.name', label: 'Nombre de tu cliente' },
-      { name: 'client.phone', label: 'Teléfono de tu cliente', type: 'tel', inputMode: 'tel', hint: 'Le enviaremos el cobro por WhatsApp.' },
+      { name: 'client.phone', label: 'Teléfono de tu cliente', type: 'tel', inputMode: 'tel', autoComplete: 'tel-national', mask: 'mxPhone', placeholder: '55 1234 5678', hint: '10 dígitos. Le enviaremos el cobro por WhatsApp.' },
       { name: 'client.email', label: 'Email de tu cliente', type: 'email', inputMode: 'email' },
     ],
   },
@@ -57,6 +67,8 @@ type SubmissionState = { status: 'idle' | 'saving' } | { status: 'error'; messag
 export function OnboardingForm({ gateway, onCreated }: { gateway: OnboardingGateway; onCreated?: (id: string) => void }) {
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submission, setSubmission] = useState<SubmissionState>({ status: 'idle' });
+  const [activity, setActivity] = useState('');
+  const [phone, setPhone] = useState('');
   const pending = useRef(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -68,9 +80,9 @@ export function OnboardingForm({ gateway, onCreated }: { gateway: OnboardingGate
     const input: OnboardingInput = {
       name: value('name'),
       profession: value('profession'),
-      client: { name: value('client.name'), phone: value('client.phone'), email: value('client.email') },
+      client: { name: value('client.name'), phone: mxPhoneDigits(value('client.phone')), email: value('client.email') },
       businessName: value('businessName'),
-      businessActivity: value('businessActivity'),
+      businessActivity: value('businessActivity') === OTHER_BUSINESS_ACTIVITY ? value('businessActivityOther') : value('businessActivity'),
       rfc: value('rfc').toUpperCase(),
       clabe: normalizeClabe(value('clabe')),
       ...(value('taxRegime') ? { taxRegime: value('taxRegime') } : {}),
@@ -89,6 +101,8 @@ export function OnboardingForm({ gateway, onCreated }: { gateway: OnboardingGate
       const onboarding = await gateway.create(input);
       setSubmission({ status: 'success', id: onboarding.id });
       form.reset();
+      setActivity('');
+      setPhone('');
       onCreated?.(onboarding.id);
     } catch (error) {
       setErrors(error instanceof OnboardingError ? error.fields : {});
@@ -108,18 +122,53 @@ export function OnboardingForm({ gateway, onCreated }: { gateway: OnboardingGate
           const describedBy = [field.hint && `hint-${field.name}`, errors[field.name] && `error-${field.name}`].filter(Boolean).join(' ');
           return <div className="form-field" key={field.name}>
             <label htmlFor={`onboarding-${field.name}`}>{field.label}</label>
-            <input
-              id={`onboarding-${field.name}`}
-              name={field.name}
-              type={field.type ?? 'text'}
-              inputMode={field.inputMode}
-              autoComplete={field.autoComplete ?? 'off'}
-              maxLength={field.maxLength ?? 255}
-              placeholder={field.placeholder}
-              required={field.name !== 'taxRegime'}
-              aria-invalid={Boolean(errors[field.name])}
-              aria-describedby={describedBy || undefined}
-            />
+            {field.options ? <>
+              <select
+                id={`onboarding-${field.name}`}
+                name={field.name}
+                required={field.name !== 'taxRegime'}
+                aria-invalid={Boolean(errors[field.name])}
+                aria-describedby={describedBy || undefined}
+                value={activity}
+                onChange={(event) => setActivity(event.target.value)}
+              >
+                <option value="" disabled>Elige una opción</option>
+                {field.options.map((option) => <option key={option} value={option}>{option}</option>)}
+              </select>
+              {activity === OTHER_BUSINESS_ACTIVITY && <input
+                name={`${field.name}Other`}
+                aria-label="Escribe tu giro"
+                placeholder="Escribe tu giro"
+                maxLength={255}
+                autoFocus
+              />}
+            </> : field.mask ? <div className="masked-input">
+              <span className="masked-input-prefix" aria-hidden="true">+52</span>
+              <input
+                id={`onboarding-${field.name}`}
+                name={field.name}
+                required
+                aria-invalid={Boolean(errors[field.name])}
+                aria-describedby={describedBy || undefined}
+                type={field.type ?? 'text'}
+                inputMode={field.inputMode}
+                autoComplete={field.autoComplete ?? 'off'}
+                placeholder={field.placeholder}
+                value={formatMxPhone(phone)}
+                onChange={(event: ChangeEvent<HTMLInputElement>) => setPhone(mxPhoneDigits(event.target.value))}
+              />
+            </div> : <input
+                id={`onboarding-${field.name}`}
+                name={field.name}
+                required={field.name !== 'taxRegime'}
+                aria-invalid={Boolean(errors[field.name])}
+                aria-describedby={describedBy || undefined}
+                type={field.type ?? 'text'}
+                inputMode={field.inputMode}
+                autoComplete={field.autoComplete ?? 'off'}
+                maxLength={field.maxLength ?? 255}
+                placeholder={field.placeholder}
+              />}
             {field.hint && <span className="field-hint" id={`hint-${field.name}`}>{field.hint}</span>}
             {errors[field.name] && <span className="field-error" id={`error-${field.name}`}>{errors[field.name]}</span>}
           </div>;

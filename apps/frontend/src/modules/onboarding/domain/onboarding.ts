@@ -13,6 +13,45 @@ export interface Onboarding extends OnboardingInput {
   id: string;
 }
 
+/** Common activities of the platform's micro-businesses. The API stores the
+ * label as free text (`businessActivity`), so the list can grow freely. */
+export const BUSINESS_ACTIVITIES = [
+  'Educación y clases particulares',
+  'Deportes y entrenamiento',
+  'Salud y bienestar',
+  'Belleza y estética',
+  'Construcción y remodelación',
+  'Electricidad y plomería',
+  'Reparación y mantenimiento',
+  'Limpieza y servicios del hogar',
+  'Alimentos y bebidas',
+  'Comercio y abarrotes',
+  'Diseño, fotografía y creatividad',
+  'Tecnología y soporte',
+  'Consultoría y servicios profesionales',
+  'Transporte y mensajería',
+  'Cuidado de mascotas',
+] as const;
+
+/** Select value that reveals a free-text activity. */
+export const OTHER_BUSINESS_ACTIVITY = 'Otro';
+
+/** Mexican mobile numbers have 10 digits; pey CoDi requires exactly that. */
+export const MX_PHONE_DIGITS = 10;
+const MX_COUNTRY_CODE = '52';
+
+/** Keeps up to 10 national digits; drops a pasted +52 / 52 prefix. */
+export function mxPhoneDigits(value: string): string {
+  let digits = value.replace(/\D/g, '');
+  if (digits.length > MX_PHONE_DIGITS && digits.startsWith(MX_COUNTRY_CODE)) digits = digits.slice(MX_COUNTRY_CODE.length);
+  return digits.slice(0, MX_PHONE_DIGITS);
+}
+
+/** "5541238910" → "55 4123 8910" (partial input is formatted as typed). */
+export function formatMxPhone(digits: string): string {
+  return [digits.slice(0, 2), digits.slice(2, 6), digits.slice(6, 10)].filter(Boolean).join(' ');
+}
+
 export type FieldErrors = Record<string, string>;
 
 export function validateOnboarding(input: OnboardingInput): FieldErrors {
@@ -35,9 +74,8 @@ export function validateOnboarding(input: OnboardingInput): FieldErrors {
   if (input.client.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.client.email)) {
     errors['client.email'] = 'Escribe un email válido.';
   }
-  const phoneDigits = input.client.phone.replace(/\D/g, '');
-  if (input.client.phone && (!/^\+?[0-9 ()-]+$/.test(input.client.phone) || phoneDigits.length < 7 || phoneDigits.length > 15)) {
-    errors['client.phone'] = 'Escribe un teléfono de entre 7 y 15 dígitos.';
+  if (input.client.phone && !/^\d{10}$/.test(input.client.phone)) {
+    errors['client.phone'] = `Escribe un teléfono de ${MX_PHONE_DIGITS} dígitos.`;
   }
   if (input.rfc && !/^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/.test(input.rfc)) {
     errors.rfc = 'Escribe un RFC de 12 o 13 caracteres con formato válido.';
