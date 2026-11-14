@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"contractors-platform/backend/internal/app"
+	"contractors-platform/backend/internal/modules/onboarding/infrastructure"
+	"contractors-platform/backend/internal/platform/database"
 	"errors"
 	"log"
 	"net"
@@ -27,7 +29,22 @@ func main() {
 	if err != nil || number < 1 || number > 65535 {
 		log.Fatal("PORT must be an integer between 1 and 65535")
 	}
-	server := &http.Server{Addr: net.JoinHostPort(host, port), Handler: app.New(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second}
+	handler := app.New()
+	// DATABASE_PATH enables SQLite; without it data lives in memory.
+	if path := os.Getenv("DATABASE_PATH"); path != "" {
+		db, err := database.OpenSQLite(path)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer db.Close()
+		repository, err := infrastructure.NewSQLiteRepository(db)
+		if err != nil {
+			log.Fatal(err)
+		}
+		handler = app.NewWith(repository)
+		log.Printf("Using SQLite database at %s", path)
+	}
+	server := &http.Server{Addr: net.JoinHostPort(host, port), Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {

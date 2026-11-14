@@ -2,9 +2,12 @@ package app
 
 import (
 	"bytes"
+	"contractors-platform/backend/internal/modules/onboarding/infrastructure"
+	"contractors-platform/backend/internal/platform/database"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -126,5 +129,28 @@ func TestHTTPStatusCodes(t *testing.T) {
 		if response.Code != test.status {
 			t.Errorf("%s %s: expected %d, got %d", test.method, test.path, test.status, response.Code)
 		}
+	}
+}
+
+func TestCreateAndRetrieveWithSQLite(t *testing.T) {
+	db, err := database.OpenSQLite(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	repository, err := infrastructure.NewSQLiteRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewWith(repository)
+	response := submit(handler, validInput())
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", response.Code, response.Body)
+	}
+	location := response.Header().Get("Location")
+	found := httptest.NewRecorder()
+	handler.ServeHTTP(found, httptest.NewRequest(http.MethodGet, location, nil))
+	if found.Code != http.StatusOK || !strings.Contains(found.Body.String(), `"rfc":"AAA010101AAA"`) {
+		t.Fatalf("find: %d %s", found.Code, found.Body)
 	}
 }

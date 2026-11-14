@@ -44,10 +44,10 @@ Evitar carpetas globales como `services`, `controllers` o `models` que mezclen d
 
 Implementar `domain.Repository` del módulo onboarding con una base de datos y pasar el adaptador a `onboarding.Register` desde la composición. El caso de uso y las rutas no necesitan conocer el motor de almacenamiento. Cada módulo será dueño de su persistencia y sus migraciones.
 
-El repositorio en memoria es un adaptador de arranque. Las escrituras de onboarding viven solo durante el proceso; no hay migraciones, autenticación ni despliegue productivo configurados.
+Hay dos adaptadores: memoria (por defecto, usado en las pruebas de rutas) y SQLite (`infrastructure/sqlite_repository.go`), que se activa con `DATABASE_PATH` desde `cmd/api`. El repositorio SQLite crea su tabla al iniciar (`CREATE TABLE IF NOT EXISTS`); todavía no hay migraciones versionadas ni autenticación. `internal/platform/database` abre la conexión compartida con el driver Go puro `modernc.org/sqlite`, sin CGO.
 
 ## Backend Go
 
-El backend usa un módulo Go independiente (`apps/backend/go.mod`), sin dependencias externas. `cmd/api` inicia el servidor; `internal/app` compone los módulos. Cada módulo vive en `internal/modules/<domain>` y expone `Register` en su raíz. Dominio y aplicación no dependen de HTTP. La memoria se protege con mutex para peticiones concurrentes y devuelve copias de los datos.
+El backend usa un módulo Go independiente (`apps/backend/go.mod`); su única dependencia externa es el driver SQLite. `cmd/api` inicia el servidor; `internal/app` compone los módulos. Cada módulo vive en `internal/modules/<domain>` y expone `Register` en su raíz. Dominio y aplicación no dependen de HTTP. La memoria se protege con mutex para peticiones concurrentes y devuelve copias de los datos.
 
 El contrato público se documenta en `docs/openapi.json`; los DTO TypeScript de `packages/contracts` deben mantenerse alineados con los tipos JSON de Go. No hay generación automática de clientes. Las pruebas HTTP verifican creación, recuperación, obligatoriedad y respuestas de error.

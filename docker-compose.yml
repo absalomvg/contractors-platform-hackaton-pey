@@ -10,10 +10,12 @@ services:
     environment:
       HOST: 0.0.0.0
       PORT: "3001"
+      DATABASE_PATH: /data/app.db
     ports:
       - "${BACKEND_PORT:-3001}:3001"
     volumes:
       - ./apps/backend:/src/apps/backend
+      - backend-data:/data
       - go-cache:/go
       - go-build-cache:/root/.cache/go-build
     healthcheck:
@@ -64,6 +66,7 @@ services:
       - api
 
 volumes:
+  backend-data:
   go-cache:
   go-build-cache:
   frontend-node-modules:
