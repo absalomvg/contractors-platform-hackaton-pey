@@ -99,3 +99,37 @@ export function isValidClabe(clabe: string): boolean {
 export function normalizeClabe(value: string): string {
   return value.replace(/[\s-]/g, '');
 }
+
+export type OnboardingStepNumber = 1 | 2 | 3;
+
+export const ONBOARDING_STEP_FIELDS: Record<OnboardingStepNumber, readonly string[]> = {
+  1: ['name', 'profession'],
+  2: ['businessName', 'businessActivity', 'rfc', 'taxRegime', 'clabe'],
+  3: ['client.name', 'client.phone', 'client.email'],
+};
+
+/** Validates only the specified onboarding fields by reusing full domain rules. */
+export function validateOnboardingStep(
+  input: OnboardingInput,
+  fields: readonly string[],
+): FieldErrors {
+  const allErrors = validateOnboarding(input);
+  const scoped: FieldErrors = {};
+  for (const field of fields) {
+    if (allErrors[field]) {
+      scoped[field] = allErrors[field];
+    }
+  }
+  return scoped;
+}
+
+/** Returns the earliest step index (1-3) containing a validation error. */
+export function findFirstErrorStep(errors: FieldErrors): OnboardingStepNumber {
+  const keys = Object.keys(errors);
+  for (const step of [1, 2, 3] as const) {
+    if (ONBOARDING_STEP_FIELDS[step].some((field) => keys.includes(field))) {
+      return step;
+    }
+  }
+  return 1;
+}
