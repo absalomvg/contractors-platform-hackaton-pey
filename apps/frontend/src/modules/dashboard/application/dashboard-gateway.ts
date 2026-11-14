@@ -9,6 +9,7 @@ import type {
   DashboardProfileDto,
   DashboardSummaryDto,
   ManualPaymentRequest,
+  PaymentMethodDto,
   PeriodQuery,
   UpdateDashboardChargeRequest,
 } from '@platform/contracts';
@@ -34,11 +35,18 @@ export interface PaymentsGateway {
   sendReminder(contractorId: string, chargeId: string): Promise<DashboardChargeDto>;
 }
 
+/** Existing customer, or a new one created together with the charge. */
+export type ChargeCustomerInput =
+  | { readonly customerId: string }
+  | { readonly name: string; readonly phone: string; readonly email?: string };
+
 export interface NewChargeInput {
-  readonly customerId: string;
+  readonly customer: ChargeCustomerInput;
   readonly concept: string;
   readonly amountCents: number;
   readonly dueDate: string;
+  /** How pey collects it (CreatePaymentIntentRequest.method). */
+  readonly method: PaymentMethodDto;
 }
 
 /** Error of a dashboard call. Branch on `code`, never on `message`. */
