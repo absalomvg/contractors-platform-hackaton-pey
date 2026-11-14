@@ -4,41 +4,57 @@ import (
 	"contractors-platform/backend/internal/modules/onboarding/domain"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"sync"
 )
 
+var errRejected = errors.New("el usuario no cumple el contrato")
+
+// MemoryRepository guarda los usuarios solo mientras el proceso vive.
 type MemoryRepository struct {
 	mutex   sync.RWMutex
-	records map[string]domain.Onboarding
+	records map[string]domain.User
 }
 
+// NewMemoryRepository crea el almacén vacío.
 func NewMemoryRepository() *MemoryRepository {
-	return &MemoryRepository{records: make(map[string]domain.Onboarding)}
+	return &MemoryRepository{records: make(map[string]domain.User)}
 }
 
-func clone(record domain.Onboarding) domain.Onboarding {
-	if record.TaxRegime != nil {
-		value := *record.TaxRegime
-		record.TaxRegime = &value
+func cloneUser(user domain.User) domain.User {
+	user.TaxRegime = copyText(user.TaxRegime)
+	return user
+}
+
+func copyText(value *string) *string {
+	if value == nil {
+		return nil
 	}
-	return record
+	copy := *value
+	return &copy
 }
 
-func (repository *MemoryRepository) Create(input domain.Input) (domain.Onboarding, error) {
+// Save persiste el usuario si el contrato lo permite y le asigna un id.
+func (repository *MemoryRepository) Save(user domain.User) (domain.User, error) {
+	if fieldErrors := domain.Allow(user); len(fieldErrors) > 0 {
+		return domain.User{}, errRejected
+	}
 	var bytes [16]byte
 	if _, err := rand.Read(bytes[:]); err != nil {
-		return domain.Onboarding{}, err
+		return domain.User{}, err
 	}
-	record := domain.Onboarding{ID: hex.EncodeToString(bytes[:]), Input: input}
+	user.ID = hex.EncodeToString(bytes[:])
+	stored := cloneUser(user)
 	repository.mutex.Lock()
 	defer repository.mutex.Unlock()
-	repository.records[record.ID] = clone(record)
-	return clone(record), nil
+	repository.records[stored.ID] = stored
+	return cloneUser(stored), nil
 }
 
-func (repository *MemoryRepository) Find(id string) (domain.Onboarding, bool) {
+// Find busca un usuario por id.
+func (repository *MemoryRepository) Find(id string) (domain.User, bool) {
 	repository.mutex.RLock()
 	defer repository.mutex.RUnlock()
-	record, found := repository.records[id]
-	return clone(record), found
+	user, found := repository.records[id]
+	return cloneUser(user), found
 }
