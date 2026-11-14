@@ -8,8 +8,10 @@ section + section { margin-top: 1.75rem; }
 .text-right { text-align: right; }
 .text-center { text-align: center; }
 
-.onboarding-fields { border: 0; margin: 0 0 1.5rem; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
-.onboarding-fields legend { padding: 0 0 1rem; font-weight: 600; }
+.onboarding-fields { border: 0; margin: 0 0 2rem; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.onboarding-fields legend { padding: 0 0 .9rem; font-weight: 600; font-size: 1.05rem; }
+.onboarding-section-description { display: block; margin-top: .2rem; font-weight: 400; font-size: .9rem; color: #64748b; }
+.field-hint { font-size: .8rem; color: #64748b; }
 .form-field { display: flex; flex-direction: column; gap: .4rem; }
 .form-field input, .form-field select { min-width: 0; border: 1px solid #cbd5e1; border-radius: 10px; padding: .65rem .8rem; font: inherit; background: #fff; }
 .form-field input:focus-visible, .form-field select:focus-visible, button:focus-visible { outline: 3px solid #5170ad; outline-offset: 2px; }
@@ -79,6 +81,7 @@ button:disabled { cursor: wait; }
 .praxis-badge-paid { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
 .praxis-badge-pending { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
 .praxis-badge-expired { background: #fff1f2; color: #be123c; border: 1px solid #fecdd3; }
+.praxis-badge-cancelled { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
 
 /* Table & Filters */
 .praxis-table-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: .75rem; }
@@ -144,3 +147,10 @@ button:disabled { cursor: wait; }
   main { margin-top: 1.25rem; }
   section { padding: 1.15rem; }
 }
+
+/* Masked phone input: fixed +52 prefix */
+.masked-input { display: flex; align-items: stretch; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; overflow: hidden; }
+.masked-input:focus-within { outline: 3px solid #5170ad; outline-offset: 2px; }
+.masked-input-prefix { display: flex; align-items: center; padding: 0 .7rem; background: #f1f5f9; color: #475569; border-right: 1px solid #cbd5e1; font-variant-numeric: tabular-nums; }
+.form-field .masked-input input { flex: 1; border: 0; border-radius: 0; outline: none; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.form-field .masked-input:has(input[aria-invalid="true"]) { border-color: #a51c30; }

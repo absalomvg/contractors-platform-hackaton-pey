@@ -209,7 +209,7 @@ func TestDashboardProfile(t *testing.T) {
 			if withTax {
 				wantStatus, wantPending = dashboarddomain.OnboardingStatusComplete, 0
 			}
-			if dashboard.ContractorID != created.ID || dashboard.Name != "Ana" || dashboard.Contact.Email != "luis@example.com" ||
+			if dashboard.ContractorID != created.ID || dashboard.Name != "Ana" || dashboard.FirstCustomer.Email != "luis@example.com" ||
 				dashboard.Business.TaxpayerType != dashboarddomain.TaxpayerTypeCompany ||
 				dashboard.Onboarding.Status != wantStatus || len(dashboard.Onboarding.PendingFields) != wantPending ||
 				(dashboard.Business.TaxRegime != nil) != withTax {

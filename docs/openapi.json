@@ -177,9 +177,10 @@
                     "name": "Electrical Services",
                     "activity": "Electrical installations",
                     "rfc": "AAA010101AAA",
-                    "taxpayerType": "company"
+                    "taxpayerType": "company",
+                    "clabeLast4": "7771"
                   },
-                  "contact": {
+                  "firstCustomer": {
                     "name": "Abarrotes Luis",
                     "phone": "+52 555 123 4567",
                     "email": "luis@example.com"
@@ -1666,7 +1667,8 @@
       "OnboardingField": {
         "type": "string",
         "enum": [
-          "taxRegime"
+          "taxRegime",
+          "clabe"
         ],
         "description": "Optional onboarding field the client has not provided yet. Uses the JSON names of `CreateOnboardingRequest`."
       },
@@ -1724,7 +1726,7 @@
           "name",
           "profession",
           "business",
-          "contact",
+          "firstCustomer",
           "onboarding"
         ],
         "properties": {
@@ -1744,39 +1746,11 @@
           "business": {
             "$ref": "#/components/schemas/DashboardBusiness"
           },
-          "contact": {
-            "$ref": "#/components/schemas/DashboardContact"
+          "firstCustomer": {
+            "$ref": "#/components/schemas/DashboardFirstCustomer"
           },
           "onboarding": {
             "$ref": "#/components/schemas/DashboardOnboardingSummary"
-          }
-        }
-      },
-      "DashboardContact": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "name",
-          "phone",
-          "email"
-        ],
-        "description": "Contact data captured in onboarding (`client`).",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255
-          },
-          "phone": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255
-          },
-          "email": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255,
-            "format": "email"
           }
         }
       },
@@ -1787,7 +1761,8 @@
           "name",
           "activity",
           "rfc",
-          "taxpayerType"
+          "taxpayerType",
+          "clabeLast4"
         ],
         "properties": {
           "name": {
@@ -1815,6 +1790,14 @@
           },
           "taxpayerType": {
             "$ref": "#/components/schemas/TaxpayerType"
+          },
+          "clabeLast4": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]{4}$",
+            "description": "Last 4 digits of the deposit CLABE. Null for records created before CLABE was required (then `clabe` is in onboarding.pendingFields)."
           }
         }
       },
@@ -2951,6 +2934,34 @@
             "type": "string",
             "maxLength": 500,
             "description": "Stored in the timeline; not shown to the customer."
+          }
+        }
+      },
+      "DashboardFirstCustomer": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "phone",
+          "email"
+        ],
+        "description": "Customer captured in onboarding (`client`): the person who receives the business's first charge.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "phone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "email": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "format": "email"
           }
         }
       }
