@@ -1,0 +1,287 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Contractors Platform API",
+    "version": "0.1.0",
+    "description": "REST API. English field names; Spanish human-facing errors. In-memory storage."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:3001"
+    }
+  ],
+  "paths": {
+    "/api/onboarding": {
+      "post": {
+        "operationId": "createOnboarding",
+        "summary": "Create an onboarding record",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOnboardingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "description": "Malformed JSON or unknown fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds 1 MiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported media type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Field validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected storage error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Onboarding"
+                }
+              }
+            },
+            "headers": {
+              "Location": {
+                "description": "URL of the created record",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/onboarding/{id}": {
+      "get": {
+        "operationId": "getOnboarding",
+        "summary": "Retrieve an onboarding record",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Onboarding"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Client": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "phone",
+          "email"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "phone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "7\u201315 digits; optional leading +, spaces, parentheses and hyphens."
+          },
+          "email": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "format": "email"
+          }
+        }
+      },
+      "CreateOnboardingRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "profession",
+          "client",
+          "businessName",
+          "businessActivity",
+          "rfc"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "profession": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "taxRegime": {
+            "type": "string",
+            "maxLength": 255,
+            "description": "Optional; blank values are omitted after normalization."
+          },
+          "businessName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "businessActivity": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "client": {
+            "$ref": "#/components/schemas/Client"
+          },
+          "rfc": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "12 or 13 characters. Trimmed and uppercased before syntax validation. No SAT lookup."
+          }
+        }
+      },
+      "Onboarding": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "profession",
+          "client",
+          "businessName",
+          "businessActivity",
+          "rfc"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "profession": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "taxRegime": {
+            "type": "string",
+            "maxLength": 255,
+            "description": "Optional; blank values are omitted after normalization."
+          },
+          "businessName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "businessActivity": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "client": {
+            "$ref": "#/components/schemas/Client"
+          },
+          "rfc": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "12 or 13 characters. Trimmed and uppercased before syntax validation. No SAT lookup."
+          },
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiError": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

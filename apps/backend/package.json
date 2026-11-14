@@ -1,0 +1,12 @@
+{
+  "name": "@platform/backend",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "go run ./cmd/api",
+    "build": "go build -o dist/api ./cmd/api",
+    "start": "./dist/api",
+    "typecheck": "go vet ./...",
+    "test": "go test -race ./..."
+  }
+}
