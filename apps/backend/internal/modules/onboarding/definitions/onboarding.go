@@ -32,13 +32,31 @@ const (
 	PhoneMaxDigits = 15
 )
 
-const CodiNotRegistered = "not_registered"
+const (
+	CodiNotRegistered = "not_registered"
+	CodiPending       = "PENDING"
+	CodiProcessing    = "PROCESSING"
+	CodiActive        = "ACTIVE"
+	CodiError         = "ERROR"
+)
 
 const (
-	PeyAlias  = "alias"
-	PeyName   = "name"
-	PeyCLABE  = "clabe"
-	PeyEntity = "entity"
+	PeyAlias      = "alias"
+	PeyName       = "name"
+	PeyCLABE      = "clabe"
+	PeyEntity     = "entity"
+	PeyID         = "id"
+	PeyCodiStatus = "codiStatus"
+)
+
+const (
+	PeyEntityPerson   = "PERSON"
+	PeyEntityBusiness = "BUSINESS"
+)
+
+const (
+	RFCLengthPerson   = 13
+	RFCLengthBusiness = 12
 )
 
 var RFCPattern = regexp.MustCompile(`^[A-ZÑ&]{3,4}[0-9]{6}[A-Z0-9]{3}$`)

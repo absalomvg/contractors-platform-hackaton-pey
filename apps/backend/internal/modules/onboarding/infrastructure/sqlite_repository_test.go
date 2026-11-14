@@ -27,6 +27,12 @@ func TestSQLiteRepositoryPersistsAcrossReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	created.BankAccountID = "01BANK"
+	created.CodiStatus = "PENDING"
+	created, err = repository.RecordBankAccount(created)
+	if err != nil {
+		t.Fatal(err)
+	}
 	withoutTax := input
 	withoutTax.TaxRegime = nil
 	withoutTax.CLABE = "012180001183597198"

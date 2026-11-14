@@ -2,6 +2,7 @@ package domain
 
 import (
 	"contractors-platform/backend/internal/modules/onboarding/definitions"
+	"encoding/json"
 	"errors"
 	"net/mail"
 	"strings"
@@ -79,6 +80,67 @@ func TakenCLABE(clabe string, taken bool) map[string]string {
 // NotRegisteredStatus es el estado CoDi de un usuario que todavía no se registra en Pey.
 func NotRegisteredStatus() string {
 	return definitions.CodiNotRegistered
+}
+
+// EncodeRegistration arma el cuerpo que Pey espera para registrar la CLABE guardada.
+func EncodeRegistration(user User) ([]byte, bool) {
+	name, entity, ok := accountHolder(user)
+	if !ok {
+		return nil, false
+	}
+	body, err := json.Marshal(map[string]string{
+		definitions.PeyAlias:  user.BusinessName,
+		definitions.PeyName:   name,
+		definitions.PeyCLABE:  user.CLABE,
+		definitions.PeyEntity: entity,
+	})
+	if err != nil {
+		return nil, false
+	}
+	return body, true
+}
+
+// DecodeBankAccount lee el id y el estado que Pey devolvió.
+func DecodeBankAccount(body []byte) (BankAccount, bool) {
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return BankAccount{}, false
+	}
+	id, _ := payload[definitions.PeyID].(string)
+	status, _ := payload[definitions.PeyCodiStatus].(string)
+	account := BankAccount{ID: id, Status: status}
+	_, ok := AttachBankAccount(User{}, account)
+	return account, ok
+}
+
+// AttachBankAccount copia el id y el estado de Pey al usuario cuando ambos son válidos.
+func AttachBankAccount(user User, account BankAccount) (User, bool) {
+	if account.ID == "" || !knownCodiStatus(account.Status) {
+		return user, false
+	}
+	user.BankAccountID = account.ID
+	user.CodiStatus = account.Status
+	return user, true
+}
+
+func accountHolder(user User) (name, entity string, ok bool) {
+	switch utf8.RuneCountInString(user.RFC) {
+	case definitions.RFCLengthPerson:
+		return user.Name, definitions.PeyEntityPerson, true
+	case definitions.RFCLengthBusiness:
+		return user.BusinessName, definitions.PeyEntityBusiness, true
+	default:
+		return "", "", false
+	}
+}
+
+func knownCodiStatus(status string) bool {
+	switch status {
+	case definitions.CodiPending, definitions.CodiProcessing, definitions.CodiActive, definitions.CodiError:
+		return true
+	default:
+		return false
+	}
 }
 
 // View proyecta el usuario al JSON que el formulario ya recibe.

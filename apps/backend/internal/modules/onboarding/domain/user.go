@@ -1,5 +1,7 @@
 package domain
 
+import "context"
+
 // Customer es la primera persona a la que el usuario puede cobrar.
 type Customer struct {
 	Name  string
@@ -22,9 +24,21 @@ type User struct {
 	BankAccountID    string
 }
 
+// BankAccount es la cuenta que Pey devolvió para una CLABE.
+type BankAccount struct {
+	ID     string
+	Status string
+}
+
+// BankRegistrar envía el alta de la CLABE a Pey y devuelve el cuerpo de la respuesta.
+type BankRegistrar interface {
+	Register(context.Context, []byte) ([]byte, error)
+}
+
 // Repository guarda y recupera usuarios.
 type Repository interface {
 	Save(User) (User, error)
 	Find(string) (User, bool)
 	HasCLABE(string) (bool, error)
+	RecordBankAccount(User) (User, error)
 }

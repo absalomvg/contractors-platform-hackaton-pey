@@ -130,6 +130,30 @@ func (repository *SQLiteRepository) Save(user domain.User) (domain.User, error) 
 	return cloneUser(user), nil
 }
 
+// RecordBankAccount anota el id y el estado que Pey devolvió para un usuario ya guardado.
+func (repository *SQLiteRepository) RecordBankAccount(user domain.User) (domain.User, error) {
+	if fieldErrors := domain.Allow(user); len(fieldErrors) > 0 {
+		return domain.User{}, errRejected
+	}
+	result, err := repository.db.Exec(`UPDATE onboardings SET bank_account_id = ?, codi_status = ? WHERE id = ?`,
+		user.BankAccountID, user.CodiStatus, user.ID)
+	if err != nil {
+		return domain.User{}, err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return domain.User{}, err
+	}
+	if rows == 0 {
+		return domain.User{}, errRejected
+	}
+	recorded, found := repository.Find(user.ID)
+	if !found {
+		return domain.User{}, errRejected
+	}
+	return recorded, nil
+}
+
 // Find busca un usuario por id.
 func (repository *SQLiteRepository) Find(id string) (domain.User, bool) {
 	var user domain.User

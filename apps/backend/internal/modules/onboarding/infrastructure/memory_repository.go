@@ -65,6 +65,23 @@ func (repository *MemoryRepository) Save(user domain.User) (domain.User, error) 
 	return cloneUser(stored), nil
 }
 
+// RecordBankAccount anota el id y el estado que Pey devolvió para un usuario ya guardado.
+func (repository *MemoryRepository) RecordBankAccount(user domain.User) (domain.User, error) {
+	if fieldErrors := domain.Allow(user); len(fieldErrors) > 0 {
+		return domain.User{}, errRejected
+	}
+	repository.mutex.Lock()
+	defer repository.mutex.Unlock()
+	stored, found := repository.records[user.ID]
+	if !found {
+		return domain.User{}, errRejected
+	}
+	stored.BankAccountID = user.BankAccountID
+	stored.CodiStatus = user.CodiStatus
+	repository.records[user.ID] = stored
+	return cloneUser(stored), nil
+}
+
 // Find busca un usuario por id.
 func (repository *MemoryRepository) Find(id string) (domain.User, bool) {
 	repository.mutex.RLock()

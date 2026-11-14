@@ -16,9 +16,9 @@ type Reader interface {
 }
 
 // Register publica las rutas y devuelve la lectura del usuario.
-func Register(mux *http.ServeMux, repository domain.Repository) Reader {
+func Register(mux *http.ServeMux, repository domain.Repository, banks domain.BankRegistrar) Reader {
 	read := application.NewReadUser(repository)
-	handler := presentation.New(application.NewRegisterUser(repository), read)
+	handler := presentation.New(application.NewRegisterUser(repository, banks), read)
 	mux.HandleFunc("POST /api/onboarding", handler.Create)
 	mux.HandleFunc("GET /api/onboarding/{id}", handler.Find)
 	return read

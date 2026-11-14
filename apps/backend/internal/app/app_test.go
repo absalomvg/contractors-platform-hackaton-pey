@@ -2,12 +2,15 @@ package app
 
 import (
 	"bytes"
+	"context"
 	dashboarddomain "contractors-platform/backend/internal/modules/dashboard/domain"
 	dashboardpresentation "contractors-platform/backend/internal/modules/dashboard/presentation"
 	"contractors-platform/backend/internal/modules/onboarding/definitions"
+	"contractors-platform/backend/internal/modules/onboarding/domain"
 	"contractors-platform/backend/internal/modules/onboarding/infrastructure"
 	"contractors-platform/backend/internal/platform/database"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -101,6 +104,85 @@ func TestInvalidFormats(t *testing.T) {
 	}
 }
 
+type scriptedPey struct {
+	response []byte
+	err      error
+	calls    int
+}
+
+func (pey *scriptedPey) Register(context.Context, []byte) ([]byte, error) {
+	pey.calls++
+	return pey.response, pey.err
+}
+
+func TestPeyAccountIsStoredAndHidden(t *testing.T) {
+	repository := infrastructure.NewMemoryRepository()
+	pey := &scriptedPey{response: []byte(`{"id":"01BANK","codiStatus":"PENDING"}`)}
+	response := submit(NewWith(repository, pey), validInput())
+	if response.Code != http.StatusCreated || pey.calls != 1 {
+		t.Fatalf("create: %d calls=%d %s", response.Code, pey.calls, response.Body)
+	}
+	if strings.Contains(response.Body.String(), "01BANK") || strings.Contains(response.Body.String(), "codiStatus") || strings.Contains(response.Body.String(), "PENDING") {
+		t.Fatalf("status leaked: %s", response.Body)
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(response.Body.Bytes(), &created)
+	stored, found := repository.Find(created.ID)
+	if !found || stored.BankAccountID != "01BANK" || stored.CodiStatus != definitions.CodiPending {
+		t.Fatalf("stored: found=%v %+v", found, stored)
+	}
+}
+
+func TestPeyFailureKeepsSavedUser(t *testing.T) {
+	repository := infrastructure.NewMemoryRepository()
+	pey := &scriptedPey{err: errors.New("pey down")}
+	response := submit(NewWith(repository, pey), validInput())
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", response.Code, response.Body)
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(response.Body.Bytes(), &created)
+	stored, found := repository.Find(created.ID)
+	if !found || stored.BankAccountID != "" || stored.CodiStatus != domain.NotRegisteredStatus() {
+		t.Fatalf("stored: found=%v %+v", found, stored)
+	}
+}
+
+func TestUnknownPeyStatusDoesNotOverwriteUser(t *testing.T) {
+	repository := infrastructure.NewMemoryRepository()
+	pey := &scriptedPey{response: []byte(`{"id":"01BANK","codiStatus":"MAYBE"}`)}
+	response := submit(NewWith(repository, pey), validInput())
+	if response.Code != http.StatusCreated || pey.calls != 1 {
+		t.Fatalf("create: %d calls=%d %s", response.Code, pey.calls, response.Body)
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(response.Body.Bytes(), &created)
+	stored, found := repository.Find(created.ID)
+	if !found || stored.BankAccountID != "" || stored.CodiStatus != domain.NotRegisteredStatus() {
+		t.Fatalf("stored: found=%v %+v", found, stored)
+	}
+}
+
+func TestDuplicateCLABEDoesNotCallPey(t *testing.T) {
+	pey := &scriptedPey{response: []byte(`{"id":"01BANK","codiStatus":"PENDING"}`)}
+	handler := NewWith(infrastructure.NewMemoryRepository(), pey)
+	if response := submit(handler, validInput()); response.Code != http.StatusCreated || pey.calls != 1 {
+		t.Fatalf("first: %d calls=%d %s", response.Code, pey.calls, response.Body)
+	}
+	again := validInput()
+	again["name"] = "Otro"
+	response := submit(handler, again)
+	if response.Code != http.StatusUnprocessableEntity || pey.calls != 1 {
+		t.Fatalf("duplicate: %d calls=%d %s", response.Code, pey.calls, response.Body)
+	}
+}
+
 func TestDuplicateCLABE(t *testing.T) {
 	handler := New()
 	if response := submit(handler, validInput()); response.Code != http.StatusCreated {
@@ -170,7 +252,7 @@ func TestCreateAndRetrieveWithSQLite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := NewWith(repository)
+	handler := NewWith(repository, infrastructure.NewUnavailablePey())
 	response := submit(handler, validInput())
 	if response.Code != http.StatusCreated {
 		t.Fatalf("create: %d %s", response.Code, response.Body)
