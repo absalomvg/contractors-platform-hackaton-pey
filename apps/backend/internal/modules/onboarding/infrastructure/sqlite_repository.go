@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS onboardings (
 	business_name     TEXT NOT NULL,
 	business_activity TEXT NOT NULL,
 	rfc               TEXT NOT NULL,
+	clabe             TEXT NOT NULL DEFAULT '',
 	codi_status       TEXT NOT NULL DEFAULT '` + definitions.CodiNotRegistered + `',
 	bank_account_id   TEXT NOT NULL DEFAULT '',
 	created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
@@ -66,6 +67,11 @@ func ensureUserColumns(db *sql.DB) error {
 			return err
 		}
 	}
+	if !present["clabe"] {
+		if _, err := db.Exec(`ALTER TABLE onboardings ADD COLUMN clabe TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
 	if !present["bank_account_id"] {
 		if _, err := db.Exec(`ALTER TABLE onboardings ADD COLUMN bank_account_id TEXT NOT NULL DEFAULT ''`); err != nil {
 			return err
@@ -85,10 +91,10 @@ func (repository *SQLiteRepository) Save(user domain.User) (domain.User, error) 
 	}
 	user.ID = hex.EncodeToString(bytes[:])
 	_, err := repository.db.Exec(`INSERT INTO onboardings
-		(id, name, profession, client_name, client_phone, client_email, tax_regime, business_name, business_activity, rfc, codi_status, bank_account_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		(id, name, profession, client_name, client_phone, client_email, tax_regime, business_name, business_activity, rfc, clabe, codi_status, bank_account_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		user.ID, user.Name, user.Profession, user.Customer.Name, user.Customer.Phone, user.Customer.Email,
-		user.TaxRegime, user.BusinessName, user.BusinessActivity, user.RFC, user.CodiStatus, user.BankAccountID)
+		user.TaxRegime, user.BusinessName, user.BusinessActivity, user.RFC, user.CLABE, user.CodiStatus, user.BankAccountID)
 	if err != nil {
 		return domain.User{}, err
 	}
@@ -100,10 +106,10 @@ func (repository *SQLiteRepository) Find(id string) (domain.User, bool) {
 	var user domain.User
 	var taxRegime sql.NullString
 	err := repository.db.QueryRow(`SELECT id, name, profession, client_name, client_phone, client_email,
-		tax_regime, business_name, business_activity, rfc, codi_status, bank_account_id
+		tax_regime, business_name, business_activity, rfc, clabe, codi_status, bank_account_id
 		FROM onboardings WHERE id = ?`, id).Scan(
 		&user.ID, &user.Name, &user.Profession, &user.Customer.Name, &user.Customer.Phone, &user.Customer.Email,
-		&taxRegime, &user.BusinessName, &user.BusinessActivity, &user.RFC, &user.CodiStatus, &user.BankAccountID)
+		&taxRegime, &user.BusinessName, &user.BusinessActivity, &user.RFC, &user.CLABE, &user.CodiStatus, &user.BankAccountID)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			log.Printf("onboarding: find %s: %v", id, err)

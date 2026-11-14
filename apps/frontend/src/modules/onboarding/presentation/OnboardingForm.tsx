@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { OnboardingError, type OnboardingGateway } from '../application/onboarding-gateway';
-import { validateOnboarding, type FieldErrors, type OnboardingInput } from '../domain/onboarding';
+import { normalizeClabe, validateOnboarding, type FieldErrors, type OnboardingInput } from '../domain/onboarding';
 
 const fields = [
   { name: 'name', label: 'Nombre', autoComplete: 'name' },
@@ -11,6 +11,7 @@ const fields = [
   { name: 'businessName', label: 'Nombre del negocio', autoComplete: 'organization' },
   { name: 'businessActivity', label: 'Giro del negocio' },
   { name: 'rfc', label: 'RFC', maxLength: 13 },
+  { name: 'clabe', label: 'CLABE donde recibirás tus cobros', inputMode: 'numeric' as const, maxLength: 22 },
   { name: 'taxRegime', label: 'Régimen fiscal (opcional)' },
 ];
 
@@ -34,6 +35,7 @@ export function OnboardingForm({ gateway }: { gateway: OnboardingGateway }) {
       businessName: value('businessName'),
       businessActivity: value('businessActivity'),
       rfc: value('rfc').toUpperCase(),
+      clabe: normalizeClabe(value('clabe')),
       ...(value('taxRegime') ? { taxRegime: value('taxRegime') } : {}),
     };
     const nextErrors = validateOnboarding(input);
@@ -70,6 +72,7 @@ export function OnboardingForm({ gateway }: { gateway: OnboardingGateway }) {
             id={`onboarding-${field.name}`}
             name={field.name}
             type={field.type ?? 'text'}
+            inputMode={field.inputMode}
             autoComplete={field.autoComplete ?? 'off'}
             maxLength={field.maxLength ?? 255}
             required={field.name !== 'taxRegime'}

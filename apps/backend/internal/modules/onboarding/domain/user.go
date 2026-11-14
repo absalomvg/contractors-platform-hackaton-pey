@@ -17,6 +17,7 @@ type User struct {
 	RFC              string
 	TaxRegime        *string
 	Customer         Customer
+	CLABE            string
 	CodiStatus       string
 	BankAccountID    string
 }
