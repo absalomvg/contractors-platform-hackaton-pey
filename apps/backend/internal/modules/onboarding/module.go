@@ -8,7 +8,7 @@ import (
 )
 
 func Register(mux *http.ServeMux, repository domain.Repository) {
-	handler := presentation.New(application.New(repository))
+	handler := presentation.New(application.NewRegisterUser(repository), application.NewReadUser(repository))
 	mux.HandleFunc("POST /api/onboarding", handler.Create)
 	mux.HandleFunc("GET /api/onboarding/{id}", handler.Find)
 }

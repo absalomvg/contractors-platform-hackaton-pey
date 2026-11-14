@@ -10,9 +10,14 @@ import (
 	"net/http"
 )
 
-type Handler struct{ service *application.Service }
+type Handler struct {
+	register *application.RegisterUser
+	read     *application.ReadUser
+}
 
-func New(service *application.Service) *Handler { return &Handler{service: service} }
+func New(register *application.RegisterUser, read *application.ReadUser) *Handler {
+	return &Handler{register: register, read: read}
+}
 
 func writeJSON(writer http.ResponseWriter, status int, payload any) {
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -43,7 +48,7 @@ func (handler *Handler) Create(writer http.ResponseWriter, request *http.Request
 		writeJSON(writer, 400, map[string]string{"message": "Envía un único objeto JSON."})
 		return
 	}
-	record, validation, err := handler.service.Create(input)
+	record, validation, err := handler.register.Create(input)
 	if len(validation) > 0 {
 		writeJSON(writer, 422, map[string]any{"message": "Revisa los campos del formulario.", "errors": validation})
 		return
@@ -57,7 +62,7 @@ func (handler *Handler) Create(writer http.ResponseWriter, request *http.Request
 }
 
 func (handler *Handler) Find(writer http.ResponseWriter, request *http.Request) {
-	record, found := handler.service.Find(request.PathValue("id"))
+	record, found := handler.read.Find(request.PathValue("id"))
 	if !found {
 		writeJSON(writer, 404, map[string]string{"message": "No se encontró el registro."})
 		return
