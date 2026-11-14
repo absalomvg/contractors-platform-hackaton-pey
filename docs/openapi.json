@@ -177,7 +177,8 @@
                     "name": "Electrical Services",
                     "activity": "Electrical installations",
                     "rfc": "AAA010101AAA",
-                    "taxpayerType": "company"
+                    "taxpayerType": "company",
+                    "clabeLast4": "7771"
                   },
                   "contact": {
                     "name": "Abarrotes Luis",
@@ -1666,7 +1667,8 @@
       "OnboardingField": {
         "type": "string",
         "enum": [
-          "taxRegime"
+          "taxRegime",
+          "clabe"
         ],
         "description": "Optional onboarding field the client has not provided yet. Uses the JSON names of `CreateOnboardingRequest`."
       },
@@ -1787,7 +1789,8 @@
           "name",
           "activity",
           "rfc",
-          "taxpayerType"
+          "taxpayerType",
+          "clabeLast4"
         ],
         "properties": {
           "name": {
@@ -1815,6 +1818,14 @@
           },
           "taxpayerType": {
             "$ref": "#/components/schemas/TaxpayerType"
+          },
+          "clabeLast4": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]{4}$",
+            "description": "Last 4 digits of the deposit CLABE. Null for records created before CLABE was required (then `clabe` is in onboarding.pendingFields)."
           }
         }
       },

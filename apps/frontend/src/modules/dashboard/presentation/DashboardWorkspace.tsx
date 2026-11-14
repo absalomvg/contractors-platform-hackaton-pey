@@ -1,318 +1,409 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import type { DashboardGateway } from '../application/dashboard-gateway';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import type {
+  CustomerRowDto,
+  DashboardChargeDto,
+  DashboardChargesDto,
+  DashboardCustomersDto,
+  DashboardProfileDto,
+  DashboardSummaryDto,
+  ManualPaymentMethod,
+} from '@platform/contracts';
+import { DashboardApiError, type DashboardGateway, type PaymentsGateway } from '../application/dashboard-gateway';
 import {
-  computeCustomerBalances,
-  DASHBOARD_PRESETS,
+  CHARGE_BADGE_LABELS,
+  CHARGE_FIELD_LABELS,
+  CHARGE_FILTERS,
+  CONCEPT_MAX_LENGTH,
+  MANUAL_PAYMENT_METHODS,
+  NOTE_MAX_LENGTH,
+  PAYMENT_METHOD_LABELS,
+  STANDING_LABELS,
+  canEdit,
+  chargeBadge,
+  chargesQueryFor,
+  formatDate,
+  formatInstant,
   formatMxnCents,
-  type ChargeRecord,
-  type ChargeStatus,
-  type ContractorProfile,
-  type CustomerRecord,
+  parseTags,
+  pesosToCents,
+  todayInMexico,
+  type ChargeBadge,
+  type ChargeFilter,
   type DashboardScreen,
-  type DeliveryChannel,
-  type FilterTab,
-  type ServiceOption,
   type ViewportMode,
 } from '../domain/dashboard';
 
-interface DashboardWorkspaceProps {
-  readonly gateway: DashboardGateway;
-  readonly contractorId?: string;
+/** Prototype-only hooks of the mock data source. */
+export interface DemoControls {
+  simulateProviderPayment(): string | null;
+  simulateConcurrentEdit(chargeId: string): void;
+  reset(): void;
 }
 
-export function DashboardWorkspace({ gateway, contractorId }: DashboardWorkspaceProps) {
+interface DashboardWorkspaceProps {
+  readonly gateway: DashboardGateway;
+  readonly payments: PaymentsGateway;
+  readonly contractorId: string;
+  readonly demo?: DemoControls;
+  readonly customerPhones?: Readonly<Record<string, string>>;
+  readonly onNotFound?: () => void;
+  readonly onSignOut?: () => void;
+}
+
+type Modal =
+  | { kind: 'reminder'; charge: DashboardChargeDto }
+  | { kind: 'payment'; charge: DashboardChargeDto }
+  | { kind: 'cancel'; charge: DashboardChargeDto }
+  | { kind: 'edit'; charge: DashboardChargeDto };
+
+const BADGE_CLASS: Record<ChargeBadge, string> = {
+  pending: 'praxis-badge-pending',
+  overdue: 'praxis-badge-expired',
+  paid: 'praxis-badge-paid',
+  cancelled: 'praxis-badge-cancelled',
+};
+
+function percent(ratio: number | null): string {
+  return ratio === null ? '—' : `${Math.round(ratio * 100)}%`;
+}
+
+export function DashboardWorkspace({ gateway, payments, contractorId, demo, customerPhones = {}, onNotFound, onSignOut }: DashboardWorkspaceProps) {
   const [viewport, setViewport] = useState<ViewportMode>('desktop');
   const [screen, setScreen] = useState<DashboardScreen>('dashboard');
-  const [presetKey, setPresetKey] = useState<'basket' | 'yoga' | 'english'>('basket');
-
-  const [profile, setProfile] = useState<ContractorProfile>(DASHBOARD_PRESETS.basket.profile);
-  const [services, setServices] = useState<ServiceOption[]>(DASHBOARD_PRESETS.basket.services);
-  const [customers, setCustomers] = useState<CustomerRecord[]>(DASHBOARD_PRESETS.basket.customers);
-  const [charges, setCharges] = useState<ChargeRecord[]>(DASHBOARD_PRESETS.basket.charges);
-
-  const [filter, setFilter] = useState<FilterTab>('ALL');
+  const [filter, setFilter] = useState<ChargeFilter>('all');
   const [search, setSearch] = useState('');
-  const [showFirstChargeGuide, setShowFirstChargeGuide] = useState(false);
+
+  const [profile, setProfile] = useState<DashboardProfileDto | null>(null);
+  const [summary, setSummary] = useState<DashboardSummaryDto | null>(null);
+  const [allCharges, setAllCharges] = useState<DashboardChargeDto[]>([]);
+  const [charges, setCharges] = useState<DashboardChargesDto | null>(null);
+  const [customers, setCustomers] = useState<DashboardCustomersDto | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const [modal, setModal] = useState<Modal | null>(null);
+  const [modalErrors, setModalErrors] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [showFirstChargeGuide, setShowFirstChargeGuide] = useState(true);
 
-  const [selectedCustomerId, setSelectedCustomerId] = useState(DASHBOARD_PRESETS.basket.customers[0]?.id ?? 'cli_1');
-  const [concept, setConcept] = useState('Mensualidad Noviembre');
-  const [amountPesos, setAmountPesos] = useState('850');
-  const [selectedChannel, setSelectedChannel] = useState<DeliveryChannel>('PAYMENT_LINK');
+  const [newCustomerId, setNewCustomerId] = useState('');
+  const [newConcept, setNewConcept] = useState('Mensualidad');
+  const [newAmount, setNewAmount] = useState('850');
+  const [newDueDate, setNewDueDate] = useState(todayInMexico());
 
-  const [reminderTargetId, setReminderTargetId] = useState<string | null>(null);
-  const [showNewCustomerModal, setShowNewCustomerModal] = useState(false);
+  const reload = useCallback(() => setReloadKey((key) => key + 1), []);
 
-  function notify(message: string) {
+  const notify = useCallback((message: string) => {
     setToast(message);
-    window.setTimeout(() => {
-      setToast((current) => (current === message ? null : current));
-    }, 3200);
-  }
+    window.setTimeout(() => setToast((current) => (current === message ? null : current)), 3600);
+  }, []);
 
   useEffect(() => {
-    if (!contractorId) return;
     const controller = new AbortController();
-    gateway
-      .fetchProfile(contractorId, controller.signal)
-      .then((remote) => {
-        if (controller.signal.aborted) return;
-        setProfile(remote.profile);
-        setCustomers((prev) => {
-          const exists = prev.some((c) => c.name.toLowerCase() === remote.firstCustomer.name.toLowerCase());
-          return exists ? prev : [remote.firstCustomer, ...prev];
-        });
-        setSelectedCustomerId(remote.firstCustomer.id);
-        setShowFirstChargeGuide(true);
-        notify(`Perfil sincronizado: ${remote.profile.businessName}`);
+    const { signal } = controller;
+    Promise.all([
+      gateway.profile(contractorId, signal),
+      gateway.summary(contractorId, {}, signal),
+      gateway.charges(contractorId, {}, signal),
+      gateway.charges(contractorId, chargesQueryFor(filter, search), signal),
+      gateway.customers(contractorId, {}, signal),
+    ])
+      .then(([nextProfile, nextSummary, everyCharge, filtered, nextCustomers]) => {
+        if (signal.aborted) return;
+        setProfile(nextProfile);
+        setSummary(nextSummary);
+        setAllCharges(everyCharge.charges);
+        setCharges(filtered);
+        setCustomers(nextCustomers);
+        setLoadError(null);
+        setNewCustomerId((current) => current || nextCustomers.customers[0]?.customerId || '');
       })
-      .catch(() => {
-        /* Mantiene estado local de demostración si el backend no tiene el id */
+      .catch((error: unknown) => {
+        if (signal.aborted) return;
+        if (error instanceof DashboardApiError && error.status === 404 && onNotFound) {
+          onNotFound();
+          return;
+        }
+        setLoadError(error instanceof Error ? error.message : 'No fue posible cargar el tablero.');
       });
     return () => controller.abort();
-  }, [contractorId, gateway]);
+  }, [gateway, contractorId, filter, search, reloadKey, onNotFound]);
 
-  function handlePresetChange(nextKey: 'basket' | 'yoga' | 'english') {
-    const next = DASHBOARD_PRESETS[nextKey];
-    setPresetKey(nextKey);
-    setProfile(next.profile);
-    setServices(next.services);
-    setCustomers(next.customers);
-    setCharges(next.charges);
-    setSelectedCustomerId(next.customers[0]?.id ?? 'cli_1');
-    if (next.services[0]) {
-      setConcept(next.services[0].name);
-      setAmountPesos(String(next.services[0].feeCents / 100));
-    }
-    notify(`Escenario cargado: ${next.profile.businessName}`);
+  function openModal(next: Modal) {
+    setModalErrors({});
+    setModal(next);
   }
 
-  function findCustomer(customerId: string): CustomerRecord {
-    return (
-      customers.find((item) => item.id === customerId) ?? {
-        id: customerId,
-        name: 'Cliente General',
-        phone: '5500000000',
-        email: 'cliente@ejemplo.mx',
-        notes: '',
+  /** Runs a write; on version_conflict reloads so the user sees the current charge. */
+  async function mutate(action: () => Promise<DashboardChargeDto>, success: (charge: DashboardChargeDto) => string) {
+    setBusy(true);
+    try {
+      const charge = await action();
+      setModal(null);
+      notify(success(charge));
+    } catch (error) {
+      if (!(error instanceof DashboardApiError)) {
+        notify('No fue posible conectar con el servidor.');
+      } else if (error.code === 'version_conflict' || error.status === 404) {
+        setModal(null);
+        notify(error.message);
+      } else {
+        setModalErrors({ form: error.message, ...error.fields });
       }
+    } finally {
+      setBusy(false);
+      reload();
+    }
+  }
+
+  function handleManualPayment(event: FormEvent<HTMLFormElement>, charge: DashboardChargeDto) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const method = String(data.get('method')) as ManualPaymentMethod;
+    const note = String(data.get('note') ?? '').trim();
+    void mutate(
+      () => gateway.recordManualPayment(contractorId, charge.chargeId, { version: charge.version, method, ...(note ? { note } : {}) }),
+      (paid) => `Pago registrado: ${formatMxnCents(paid.amountCents)} de ${paid.customerName} (${PAYMENT_METHOD_LABELS[method]})`,
     );
   }
 
-  function openPaymentBuilder(customerId?: string, channel?: DeliveryChannel) {
-    if (customerId) setSelectedCustomerId(customerId);
-    if (channel) setSelectedChannel(channel);
-    setScreen('payment');
+  function handleCancel(event: FormEvent<HTMLFormElement>, charge: DashboardChargeDto) {
+    event.preventDefault();
+    const reason = String(new FormData(event.currentTarget).get('reason') ?? '').trim();
+    void mutate(
+      () => gateway.cancelCharge(contractorId, charge.chargeId, { version: charge.version, ...(reason ? { reason } : {}) }),
+      (cancelled) => `Cobro cancelado: ${cancelled.concept} de ${cancelled.customerName}`,
+    );
+  }
+
+  function handleEdit(event: FormEvent<HTMLFormElement>, charge: DashboardChargeDto) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const text = (name: string) => String(data.get(name) ?? '').trim();
+    const body: Parameters<DashboardGateway['updateCharge']>[2] = { version: charge.version };
+    if (canEdit(charge, 'concept') && text('concept') !== charge.concept) body.concept = text('concept');
+    if (canEdit(charge, 'dueDate') && text('dueDate') !== charge.dueDate) body.dueDate = text('dueDate');
+    if (canEdit(charge, 'amountCents')) {
+      const cents = pesosToCents(text('amount'));
+      if (cents === null) {
+        setModalErrors({ amountCents: 'Ingresa un monto válido.' });
+        return;
+      }
+      if (cents !== charge.amountCents) body.amountCents = cents;
+    }
+    if (text('note') !== (charge.note ?? '')) body.note = text('note') || null;
+    const tags = parseTags(text('tags'));
+    if (tags.join(',') !== charge.tags.join(',')) body.tags = tags;
+    void mutate(
+      () => gateway.updateCharge(contractorId, charge.chargeId, body),
+      (updated) => `Cobro actualizado: ${updated.concept} (versión ${updated.version})`,
+    );
+  }
+
+  function handleReminder(charge: DashboardChargeDto, via: 'WhatsApp' | 'Correo') {
+    void mutate(
+      () => payments.sendReminder(contractorId, charge.chargeId),
+      (updated) => `Recordatorio ${updated.reminderCount} enviado por ${via} a ${updated.customerName}`,
+    );
   }
 
   function handleCreateCharge(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const numericPesos = Number(amountPesos);
-    if (!Number.isFinite(numericPesos) || numericPesos <= 0) return;
-    const amountCents = Math.round(numericPesos * 100);
-    const customer = findCustomer(selectedCustomerId);
-    const newCharge: ChargeRecord = {
-      id: `pi_${Date.now()}`,
-      customerId: selectedCustomerId,
-      concept: concept.trim() || 'Servicio profesional',
-      amountCents,
-      channel: selectedChannel,
-      status: 'PENDING_PAYMENT',
-      reminderCount: 0,
-      lastReminderLabel: 'Enviado hoy',
-      dateLabel: '14 Nov',
-    };
-    setCharges((prev) => [newCharge, ...prev]);
-    setFilter('ALL');
-    setScreen('dashboard');
-    notify(`Cobro creado (${selectedChannel === 'PAYMENT_LINK' ? 'Payment Link' : 'CoDi QR'}): ${formatMxnCents(amountCents)} para ${customer.name}`);
-  }
-
-  function handleMarkSettled(chargeId: string) {
-    const target = charges.find((item) => item.id === chargeId);
-    if (!target) return;
-    const customer = findCustomer(target.customerId);
-    setCharges((prev) =>
-      prev.map((item) =>
-        item.id === chargeId
-          ? { ...item, status: 'SETTLED', lastReminderLabel: 'Liquidado webhook pey' }
-          : item,
-      ),
-    );
-    notify(`Pago acreditado: ${formatMxnCents(target.amountCents)} de ${customer.name} en •••• ${profile.clabeLast4}`);
-  }
-
-  function handleSimulateNextWebhook() {
-    const nextPending = charges.find((item) => item.status !== 'SETTLED');
-    if (!nextPending) {
-      notify('Todos los cobros están liquidados.');
+    const amountCents = pesosToCents(newAmount);
+    if (!newCustomerId || amountCents === null || !newConcept.trim()) {
+      notify('Revisa cliente, concepto y monto.');
       return;
     }
-    handleMarkSettled(nextPending.id);
+    void payments
+      .createCharge(contractorId, { customerId: newCustomerId, concept: newConcept.trim(), amountCents, dueDate: newDueDate })
+      .then((created) => {
+        setFilter('all');
+        setScreen('dashboard');
+        notify(`Cobro creado: ${formatMxnCents(created.amountCents)} para ${created.customerName}`);
+        reload();
+      });
   }
 
-  function handleSendReminder(chargeId: string, via: 'WhatsApp' | 'Correo') {
-    const target = charges.find((item) => item.id === chargeId);
-    if (!target) return;
-    const customer = findCustomer(target.customerId);
-    setCharges((prev) =>
-      prev.map((item) =>
-        item.id === chargeId
-          ? { ...item, reminderCount: item.reminderCount + 1, lastReminderLabel: `Hoy vía ${via}` }
-          : item,
-      ),
+  function handleSimulatePayment() {
+    const chargeId = demo?.simulateProviderPayment();
+    notify(chargeId ? `Webhook pey simulado: ${chargeId} pagado con CoDi` : 'No hay cobros pendientes.');
+    reload();
+  }
+
+  function handleSimulateConflict() {
+    const target = allCharges.find((charge) => charge.status === 'pending');
+    if (!demo || !target) return;
+    demo.simulateConcurrentEdit(target.chargeId);
+    notify(`Otro dispositivo editó "${target.concept}". Tu siguiente cambio a ese cobro recibirá 409 version_conflict.`);
+  }
+
+  function handleReset() {
+    demo?.reset();
+    setFilter('all');
+    setSearch('');
+    notify('Datos de prueba restaurados (5 registros).');
+    reload();
+  }
+
+  if (loadError) {
+    return (
+      <section className="praxis-workspace">
+        <p role="alert" className="field-error">{loadError}</p>
+        <button type="button" className="praxis-btn-primary" onClick={reload}>Reintentar</button>
+      </section>
     );
-    setReminderTargetId(null);
-    notify(`Recordatorio enviado por ${via} a ${customer.name}`);
+  }
+  if (!profile || !summary || !charges || !customers) {
+    return <section className="praxis-workspace" aria-busy="true"><p>Cargando tablero…</p></section>;
   }
 
-  function handleSendBulkReminders() {
-    const pendingCount = charges.filter((item) => item.status !== 'SETTLED').length;
-    if (pendingCount === 0) {
-      notify('No hay cobros pendientes por recordar.');
-      return;
+  const clabeLabel = profile.business.clabeLast4 ? `•••• ${profile.business.clabeLast4}` : 'CLABE pendiente';
+  const filterCounts: Record<ChargeFilter, number> = {
+    all: allCharges.length,
+    pending: allCharges.filter((charge) => charge.status === 'pending').length,
+    overdue: allCharges.filter((charge) => charge.overdue).length,
+    paid: allCharges.filter((charge) => charge.status === 'paid').length,
+    cancelled: allCharges.filter((charge) => charge.status === 'cancelled').length,
+  };
+  const activeCustomer = customers.customers.find((row) => row.customerId === newCustomerId);
+  const previewAmountCents = pesosToCents(newAmount) ?? 0;
+
+  function renderBadge(charge: DashboardChargeDto) {
+    const badge = chargeBadge(charge);
+    return <span className={`praxis-badge ${BADGE_CLASS[badge]}`}>{CHARGE_BADGE_LABELS[badge]}</span>;
+  }
+
+  function renderStatusDetail(charge: DashboardChargeDto) {
+    if (charge.status === 'paid' && charge.paidAt) {
+      return `${PAYMENT_METHOD_LABELS[charge.paymentMethod ?? 'other']} · ${formatInstant(charge.paidAt)}`;
     }
-    setCharges((prev) =>
-      prev.map((item) =>
-        item.status !== 'SETTLED'
-          ? { ...item, reminderCount: item.reminderCount + 1, lastReminderLabel: 'Recordatorio masivo hoy' }
-          : item,
-      ),
+    if (charge.status === 'cancelled' && charge.cancelledAt) return `Cancelado ${formatInstant(charge.cancelledAt)}`;
+    return `Vence ${formatDate(charge.dueDate)}`;
+  }
+
+  function renderActions(charge: DashboardChargeDto) {
+    return (
+      <div className="praxis-row-actions">
+        {charge.status === 'pending' && (
+          <>
+            <button type="button" className="praxis-action-btn warn" onClick={() => openModal({ kind: 'reminder', charge })}>
+              🔔 Recordar
+            </button>
+            <button type="button" className="praxis-action-btn ok" onClick={() => openModal({ kind: 'payment', charge })}>
+              ✓ Registrar pago
+            </button>
+            <button type="button" className="praxis-action-btn" onClick={() => openModal({ kind: 'cancel', charge })}>
+              ✕ Cancelar
+            </button>
+          </>
+        )}
+        <button type="button" className="praxis-action-btn" onClick={() => openModal({ kind: 'edit', charge })}>
+          ✎ Editar
+        </button>
+      </div>
     );
-    notify(`Recordatorios enviados a ${pendingCount} cobros pendientes.`);
   }
 
-  function handleCreateCustomer(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const name = String(data.get('name') ?? '').trim();
-    const phone = String(data.get('phone') ?? '').trim();
-    const email = String(data.get('email') ?? '').trim() || 'cliente@ejemplo.mx';
-    const notes = String(data.get('notes') ?? '').trim();
-    if (!name || !phone) return;
-    const created: CustomerRecord = {
-      id: `cli_${Date.now()}`,
-      name,
-      phone,
-      email,
-      notes,
-    };
-    setCustomers((prev) => [created, ...prev]);
-    setSelectedCustomerId(created.id);
-    setShowNewCustomerModal(false);
-    notify(`Cliente agregado: ${name}`);
-  }
-
-  const settledCharges = charges.filter((item) => item.status === 'SETTLED');
-  const pendingCharges = charges.filter((item) => item.status !== 'SETTLED');
-  const settledTotalCents = settledCharges.reduce((sum, item) => sum + item.amountCents, 0);
-  const pendingTotalCents = pendingCharges.reduce((sum, item) => sum + item.amountCents, 0);
-  const pendingCustomerCount = new Set(pendingCharges.map((item) => item.customerId)).size;
-
-  const filteredCharges = charges.filter((item) => {
-    const matchesTab = filter === 'ALL' || item.status === filter;
-    const customer = findCustomer(item.customerId);
-    const normalizedSearch = search.toLowerCase().trim();
-    const matchesSearch =
-      !normalizedSearch ||
-      customer.name.toLowerCase().includes(normalizedSearch) ||
-      item.concept.toLowerCase().includes(normalizedSearch);
-    return matchesTab && matchesSearch;
-  });
-
-  const customerBalances = computeCustomerBalances(customers, charges);
-  const activeCustomer = findCustomer(selectedCustomerId);
-  const previewAmountCents = Math.max(0, Math.round((Number(amountPesos) || 0) * 100));
-  const previewPaymentLink = `https://pey.mx/l/${profile.contractorId}-${selectedCustomerId}-${previewAmountCents}`;
-  const reminderTarget = reminderTargetId ? charges.find((item) => item.id === reminderTargetId) ?? null : null;
-
-  function renderStatusBadge(status: ChargeStatus) {
-    if (status === 'SETTLED') {
-      return <span className="praxis-badge praxis-badge-paid">✓ Pagado</span>;
-    }
-    if (status === 'EXPIRED') {
-      return <span className="praxis-badge praxis-badge-expired">⚠ Vencido</span>;
-    }
-    return <span className="praxis-badge praxis-badge-pending">⏳ Pendiente</span>;
+  function renderCustomerCard(row: CustomerRowDto) {
+    const badgeClass = row.standing === 'overdue' ? 'praxis-badge-expired' : row.standing === 'pending' ? 'praxis-badge-pending' : 'praxis-badge-paid';
+    return (
+      <div key={row.customerId} className="praxis-card praxis-client-card">
+        <div className="praxis-client-top">
+          <div>
+            <strong>{row.name}</strong>
+            <div className="praxis-subcell">
+              {row.lastPayment
+                ? `Último pago ${formatMxnCents(row.lastPayment.amountCents)} · ${PAYMENT_METHOD_LABELS[row.lastPayment.method]}`
+                : 'Sin pagos registrados'}
+            </div>
+          </div>
+          <span className={`praxis-badge ${badgeClass}`}>{STANDING_LABELS[row.standing]}</span>
+        </div>
+        <div className="praxis-client-balances">
+          <div>
+            <span>Por cobrar</span>
+            <strong className="tabular">{formatMxnCents(row.balance.outstandingCents)}</strong>
+          </div>
+          <div>
+            <span>Vencido</span>
+            <strong className="tabular praxis-text-amber">{formatMxnCents(row.balance.overdueCents)}</strong>
+          </div>
+        </div>
+        <div className="praxis-subcell">
+          {row.oldestDueDate ? `Vencido desde ${formatDate(row.oldestDueDate)}` : row.nextDueDate ? `Próximo vencimiento ${formatDate(row.nextDueDate)}` : 'Sin cobros pendientes'}
+        </div>
+        <div className="praxis-row-actions">
+          <button
+            type="button"
+            className="praxis-btn-primary"
+            onClick={() => {
+              setNewCustomerId(row.customerId);
+              setScreen('payment');
+            }}
+          >
+            + Nuevo cobro
+          </button>
+          <button
+            type="button"
+            className="praxis-btn-secondary"
+            onClick={() => {
+              setSearch(row.name);
+              setFilter('all');
+              setScreen('dashboard');
+            }}
+          >
+            Ver cobros
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
     <section aria-labelledby="dashboard-workspace-title" className="praxis-workspace">
-      {/* Barra de control superior (Desktop / Móvil + Vistas + Presets) */}
       <div className="praxis-toolbar">
         <div className="praxis-toolbar-group">
           <span id="dashboard-workspace-title" className="praxis-toolbar-label">Vista:</span>
           <div className="praxis-pill-toggle" role="group" aria-label="Selector de vista de dispositivo">
-            <button
-              type="button"
-              className={viewport === 'desktop' ? 'active' : ''}
-              onClick={() => setViewport('desktop')}
-            >
+            <button type="button" className={viewport === 'desktop' ? 'active' : ''} onClick={() => setViewport('desktop')}>
               🖥️ Desktop
             </button>
-            <button
-              type="button"
-              className={viewport === 'mobile' ? 'active' : ''}
-              onClick={() => setViewport('mobile')}
-            >
+            <button type="button" className={viewport === 'mobile' ? 'active' : ''} onClick={() => setViewport('mobile')}>
               📱 Móvil (390×844)
             </button>
           </div>
         </div>
 
         <div className="praxis-toolbar-group">
-          <button
-            type="button"
-            className={`praxis-nav-pill ${screen === 'dashboard' ? 'active' : ''}`}
-            onClick={() => setScreen('dashboard')}
-          >
-            1. Dashboard
-          </button>
-          <button
-            type="button"
-            className={`praxis-nav-pill ${screen === 'clients' ? 'active' : ''}`}
-            onClick={() => setScreen('clients')}
-          >
-            2. Clientes ({customers.length})
-          </button>
-          <button
-            type="button"
-            className={`praxis-nav-pill ${screen === 'payment' ? 'active' : ''}`}
-            onClick={() => setScreen('payment')}
-          >
-            3. Solicitar Pago
-          </button>
-          <button
-            type="button"
-            className={`praxis-nav-pill ${screen === 'workflow' ? 'active' : ''}`}
-            onClick={() => setScreen('workflow')}
-          >
-            4. Flujo Workflow
-          </button>
-          <button
-            type="button"
-            className={`praxis-nav-pill ${screen === 'profile' ? 'active' : ''}`}
-            onClick={() => setScreen('profile')}
-          >
-            5. Perfil
-          </button>
+          {(
+            [
+              ['dashboard', '1. Dashboard'],
+              ['clients', `2. Clientes (${customers.counts.all})`],
+              ['payment', '3. Solicitar pago'],
+              ['workflow', '4. Flujo'],
+              ['profile', '5. Perfil'],
+            ] as const
+          ).map(([id, label]) => (
+            <button key={id} type="button" className={`praxis-nav-pill ${screen === id ? 'active' : ''}`} onClick={() => setScreen(id)}>
+              {label}
+            </button>
+          ))}
         </div>
 
-        <div className="praxis-toolbar-group">
-          <select
-            aria-label="Seleccionar giro de demostración"
-            value={presetKey}
-            onChange={(e) => handlePresetChange(e.target.value as 'basket' | 'yoga' | 'english')}
-            className="praxis-select-compact"
-          >
-            <option value="basket">🏀 Prof. Basquetbol</option>
-            <option value="yoga">🧘‍♀️ Instructora Yoga</option>
-            <option value="english">🇬🇧 Maestro Inglés</option>
-          </select>
-          <button type="button" className="praxis-btn-webhook" onClick={handleSimulateNextWebhook}>
-            ⚡ Simular Pago
-          </button>
-        </div>
+        {demo && (
+          <div className="praxis-toolbar-group">
+            <button type="button" className="praxis-btn-webhook" onClick={handleSimulatePayment}>
+              ⚡ Simular pago CoDi
+            </button>
+            <button type="button" className="praxis-btn-secondary" onClick={handleSimulateConflict}>
+              Simular conflicto
+            </button>
+            <button type="button" className="praxis-btn-secondary" onClick={handleReset}>
+              Reiniciar datos
+            </button>
+          </div>
+        )}
       </div>
 
       {toast && (
@@ -322,7 +413,6 @@ export function DashboardWorkspace({ gateway, contractorId }: DashboardWorkspace
         </div>
       )}
 
-      {/* Escenario adaptable (Desktop completo o Marco Móvil 390x844) */}
       <div className={viewport === 'mobile' ? 'praxis-stage-mobile-wrapper' : ''}>
         <div className={viewport === 'mobile' ? 'praxis-phone-frame' : 'praxis-desktop-frame'}>
           {viewport === 'mobile' && (
@@ -333,35 +423,28 @@ export function DashboardWorkspace({ gateway, contractorId }: DashboardWorkspace
             </div>
           )}
 
-          {/* Encabezado del negocio */}
           <header className="praxis-app-header">
             <div className="praxis-brand">
-              <div className="praxis-avatar">P</div>
+              <div className="praxis-avatar">{profile.business.name.charAt(0).toUpperCase()}</div>
               <div>
                 <div className="praxis-brand-title">
-                  <strong>{profile.businessName}</strong>
-                  <span className="praxis-clabe-pill">•••• {profile.clabeLast4}</span>
+                  <strong>{profile.business.name}</strong>
+                  <span className="praxis-clabe-pill">{clabeLabel}</span>
                 </div>
                 <div className="praxis-brand-sub">
-                  {profile.ownerName} · {profile.profession}
+                  {profile.name} · {profile.profession}
                 </div>
               </div>
             </div>
             <div className="praxis-header-actions">
-              <button
-                type="button"
-                className="praxis-btn-secondary"
-                onClick={() => setShowFirstChargeGuide(true)}
-              >
-                Guía 1.er Cobro
-              </button>
-              <button
-                type="button"
-                className="praxis-btn-primary"
-                onClick={() => openPaymentBuilder(undefined, 'PAYMENT_LINK')}
-              >
+              <button type="button" className="praxis-btn-primary" onClick={() => setScreen('payment')}>
                 + Cobrar
               </button>
+              {onSignOut && (
+                <button type="button" className="praxis-btn-secondary" onClick={onSignOut}>
+                  Salir
+                </button>
+              )}
             </div>
           </header>
 
@@ -369,10 +452,10 @@ export function DashboardWorkspace({ gateway, contractorId }: DashboardWorkspace
             {showFirstChargeGuide && (
               <div className="praxis-first-charge-banner">
                 <div>
-                  <span className="praxis-banner-tag">🎉 Stage 1 completado · Haz tu 1.er cobro</span>
-                  <h3>Envía tu primer link de pago a {customers[0]?.name ?? 'tu cliente'}</h3>
+                  <span className="praxis-banner-tag">🎉 Registro completado · Haz tu primer cobro</span>
+                  <h3>Bienvenido, {profile.name}</h3>
                   <p>
-                    El pago se acredita sin comisión en tu CLABE <strong>•••• {profile.clabeLast4}</strong>.
+                    Tus cobros se depositan directo en tu CLABE <strong>{clabeLabel}</strong>.
                   </p>
                 </div>
                 <div className="praxis-banner-actions">
@@ -380,109 +463,60 @@ export function DashboardWorkspace({ gateway, contractorId }: DashboardWorkspace
                     type="button"
                     className="praxis-btn-accent"
                     onClick={() => {
-                      openPaymentBuilder(customers[0]?.id, 'PAYMENT_LINK');
+                      setScreen('payment');
                       setShowFirstChargeGuide(false);
                     }}
                   >
-                    💬 1. Envío WhatsApp (Payment Link)
+                    Crear mi primer cobro
                   </button>
-                  <button
-                    type="button"
-                    className="praxis-btn-outline-light"
-                    onClick={() => {
-                      openPaymentBuilder(customers[0]?.id, 'CODI_QR');
-                      setShowFirstChargeGuide(false);
-                    }}
-                  >
-                    🏁 2. Mostrar QR CoDi
-                  </button>
-                  <button
-                    type="button"
-                    className="praxis-btn-close-light"
-                    onClick={() => setShowFirstChargeGuide(false)}
-                    aria-label="Cerrar guía"
-                  >
+                  <button type="button" className="praxis-btn-close-light" onClick={() => setShowFirstChargeGuide(false)} aria-label="Cerrar guía">
                     ✕
                   </button>
                 </div>
               </div>
             )}
 
-            {/* ========================================================= */}
-            {/* PANTALLA 1: DASHBOARD                                     */}
-            {/* ========================================================= */}
             {screen === 'dashboard' && (
               <div className="praxis-stack">
                 <div className="praxis-kpi-grid">
                   <div className="praxis-kpi-card">
                     <div className="praxis-kpi-top">
-                      <span>COBRADO</span>
-                      <span className="praxis-badge praxis-badge-paid">0% comisión</span>
+                      <span>COBRADO ESTE MES</span>
+                      <span className="praxis-badge praxis-badge-paid">Cobranza {percent(summary.collectionRate.ratio)}</span>
                     </div>
-                    <div className="praxis-kpi-value tabular">{formatMxnCents(settledTotalCents)}</div>
+                    <div className="praxis-kpi-value tabular">{formatMxnCents(summary.collected.amountCents)}</div>
                     <div className="praxis-kpi-meta">
-                      {settledCharges.length} pagos liquidados · CLABE •••• {profile.clabeLast4}
+                      {summary.collected.count} pagos · ahorro en comisiones {formatMxnCents(summary.commissionSavings.amountCents)}
                     </div>
                   </div>
 
                   <div className="praxis-kpi-card">
                     <div className="praxis-kpi-top">
                       <span>POR COBRAR</span>
-                      <span className="praxis-badge praxis-badge-pending">{pendingCharges.length} pend.</span>
+                      <span className="praxis-badge praxis-badge-pending">{summary.outstanding.count} pend.</span>
                     </div>
-                    <div className="praxis-kpi-value praxis-text-amber tabular">{formatMxnCents(pendingTotalCents)}</div>
-                    <div className="praxis-kpi-meta">
-                      En {pendingCustomerCount} clientes ·{' '}
-                      <button type="button" className="praxis-link-btn" onClick={handleSendBulkReminders}>
-                        🔔 Recordar a todos →
-                      </button>
-                    </div>
+                    <div className="praxis-kpi-value praxis-text-amber tabular">{formatMxnCents(summary.outstanding.amountCents)}</div>
+                    <div className="praxis-kpi-meta">En {summary.outstanding.customerCount} clientes · {summary.reminders.sent} recordatorios enviados</div>
                   </div>
 
                   <div className="praxis-kpi-card">
                     <div className="praxis-kpi-top">
-                      <span>CANALES ACTIVOS (PEY)</span>
+                      <span>VENCIDO</span>
+                      <span className="praxis-badge praxis-badge-expired">{summary.overdue.count} cobros</span>
                     </div>
-                    <div className="praxis-quick-grid">
-                      <button
-                        type="button"
-                        className="praxis-quick-btn"
-                        onClick={() => openPaymentBuilder(undefined, 'PAYMENT_LINK')}
-                      >
-                        🔗 Payment Link
-                      </button>
-                      <button
-                        type="button"
-                        className="praxis-quick-btn"
-                        onClick={() => openPaymentBuilder(undefined, 'CODI_QR')}
-                      >
-                        🏁 Código QR CoDi
-                      </button>
-                      <button
-                        type="button"
-                        className="praxis-quick-btn"
-                        onClick={() => setShowNewCustomerModal(true)}
-                      >
-                        👤 + Cliente
-                      </button>
-                      <button
-                        type="button"
-                        className="praxis-quick-btn"
-                        onClick={() => setScreen('workflow')}
-                      >
-                        🗺️ Ver Workflow
-                      </button>
+                    <div className="praxis-kpi-value tabular">{formatMxnCents(summary.overdue.amountCents)}</div>
+                    <div className="praxis-kpi-meta">
+                      {summary.overdue.oldestDaysOverdue === null ? 'Nada vencido' : `El más antiguo lleva ${summary.overdue.oldestDaysOverdue} días`}
                     </div>
                   </div>
                 </div>
 
-                {/* Tabla / Lista de cobros con filtros */}
                 <div className="praxis-card">
                   <div className="praxis-table-header">
                     <div>
-                      <h3>Registro de Cobros y Recordatorios</h3>
+                      <h3>Cobros</h3>
                       <p className="praxis-muted">
-                        Métodos soportados: <code>PAYMENT_LINK</code> y <code>CODI_QR</code>.
+                        {charges.totals.count} cobros · {formatMxnCents(charges.totals.amountCents)}
                       </p>
                     </div>
                     <input
@@ -490,48 +524,35 @@ export function DashboardWorkspace({ gateway, contractorId }: DashboardWorkspace
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       placeholder="Buscar cliente o concepto…"
+                      aria-label="Buscar cobros"
                       className="praxis-search-input"
                     />
                   </div>
 
                   <div className="praxis-filter-bar" role="tablist" aria-label="Filtrar cobros por estado">
-                    <button
-                      type="button"
-                      className={`praxis-filter-pill ${filter === 'ALL' ? 'active' : ''}`}
-                      onClick={() => setFilter('ALL')}
-                    >
-                      Todos ({charges.length})
-                    </button>
-                    <button
-                      type="button"
-                      className={`praxis-filter-pill ${filter === 'PENDING_PAYMENT' ? 'active' : ''}`}
-                      onClick={() => setFilter('PENDING_PAYMENT')}
-                    >
-                      ⏳ Pendientes ({charges.filter((c) => c.status === 'PENDING_PAYMENT').length})
-                    </button>
-                    <button
-                      type="button"
-                      className={`praxis-filter-pill ${filter === 'SETTLED' ? 'active' : ''}`}
-                      onClick={() => setFilter('SETTLED')}
-                    >
-                      ✓ Completados ({settledCharges.length})
-                    </button>
-                    <button
-                      type="button"
-                      className={`praxis-filter-pill ${filter === 'EXPIRED' ? 'active' : ''}`}
-                      onClick={() => setFilter('EXPIRED')}
-                    >
-                      ⚠ Vencidos ({charges.filter((c) => c.status === 'EXPIRED').length})
-                    </button>
+                    {CHARGE_FILTERS.map(({ id, label }) => (
+                      <button
+                        key={id}
+                        type="button"
+                        role="tab"
+                        aria-selected={filter === id}
+                        className={`praxis-filter-pill ${filter === id ? 'active' : ''}`}
+                        onClick={() => setFilter(id)}
+                      >
+                        {label} ({filterCounts[id]})
+                      </button>
+                    ))}
                   </div>
+
+                  {charges.charges.length === 0 && <p className="praxis-muted">No hay cobros con estos filtros.</p>}
 
                   {viewport === 'desktop' ? (
                     <div className="praxis-table-scroll">
                       <table className="praxis-table">
                         <thead>
                           <tr>
-                            <th>Cliente / Contacto</th>
-                            <th>Concepto y Canal</th>
+                            <th>Cliente</th>
+                            <th>Concepto</th>
                             <th className="text-right">Monto</th>
                             <th>Estatus</th>
                             <th>Recordatorios</th>
@@ -539,513 +560,299 @@ export function DashboardWorkspace({ gateway, contractorId }: DashboardWorkspace
                           </tr>
                         </thead>
                         <tbody>
-                          {filteredCharges.map((charge) => {
-                            const customer = findCustomer(charge.customerId);
-                            return (
-                              <tr key={charge.id}>
-                                <td>
-                                  <strong>{customer.name}</strong>
-                                  <div className="praxis-subcell tabular">
-                                    📱 {customer.phone} · {customer.email}
-                                  </div>
-                                </td>
-                                <td>
-                                  <strong>{charge.concept}</strong>
-                                  <div className="praxis-subcell">
-                                    {charge.channel === 'PAYMENT_LINK' ? '🔗 Payment Link' : '🏁 QR CoDi'} · {charge.dateLabel}
-                                  </div>
-                                </td>
-                                <td className="text-right tabular">
-                                  <strong>{formatMxnCents(charge.amountCents)}</strong>
-                                </td>
-                                <td>{renderStatusBadge(charge.status)}</td>
-                                <td>
-                                  <span className="tabular">{charge.reminderCount} env.</span>
-                                  <div className="praxis-subcell">{charge.lastReminderLabel}</div>
-                                </td>
-                                <td className="text-right">
-                                  {charge.status === 'SETTLED' ? (
-                                    <span className="praxis-settled-text">Liquidado ✓</span>
-                                  ) : (
-                                    <div className="praxis-row-actions">
-                                      <button
-                                        type="button"
-                                        className="praxis-action-btn warn"
-                                        onClick={() => setReminderTargetId(charge.id)}
-                                      >
-                                        🔔 Recordar
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="praxis-action-btn"
-                                        onClick={() => openPaymentBuilder(charge.customerId, 'CODI_QR')}
-                                      >
-                                        🏁 QR
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="praxis-action-btn ok"
-                                        onClick={() => handleMarkSettled(charge.id)}
-                                      >
-                                        ⚡ Pagar
-                                      </button>
-                                    </div>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })}
+                          {charges.charges.map((charge) => (
+                            <tr key={charge.chargeId}>
+                              <td>
+                                <strong>{charge.customerName}</strong>
+                                <div className="praxis-subcell">{charge.chargeId} · v{charge.version}</div>
+                              </td>
+                              <td>
+                                <strong>{charge.concept}</strong>
+                                <div className="praxis-subcell">
+                                  {charge.tags.map((tag) => `#${tag}`).join(' ')}
+                                  {charge.note && ` 📝 ${charge.note}`}
+                                </div>
+                              </td>
+                              <td className="text-right tabular">
+                                <strong>{formatMxnCents(charge.amountCents)}</strong>
+                              </td>
+                              <td>
+                                {renderBadge(charge)}
+                                <div className="praxis-subcell">{renderStatusDetail(charge)}</div>
+                              </td>
+                              <td>
+                                <span className="tabular">{charge.reminderCount} env.</span>
+                              </td>
+                              <td className="text-right">{renderActions(charge)}</td>
+                            </tr>
+                          ))}
                         </tbody>
                       </table>
                     </div>
                   ) : (
                     <div className="praxis-mobile-cards">
-                      {filteredCharges.map((charge) => {
-                        const customer = findCustomer(charge.customerId);
-                        return (
-                          <div key={charge.id} className="praxis-mobile-card">
-                            <div className="praxis-mobile-card-top">
-                              <div>
-                                <strong>{customer.name}</strong>
-                                <div className="praxis-subcell">{charge.concept}</div>
-                                <div className="praxis-subcell tabular">
-                                  {charge.channel === 'PAYMENT_LINK' ? '🔗 Link' : '🏁 QR CoDi'} · 📱 {customer.phone}
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <strong className="tabular">{formatMxnCents(charge.amountCents)}</strong>
-                                <div>{renderStatusBadge(charge.status)}</div>
-                              </div>
+                      {charges.charges.map((charge) => (
+                        <div key={charge.chargeId} className="praxis-mobile-card">
+                          <div className="praxis-mobile-card-top">
+                            <div>
+                              <strong>{charge.customerName}</strong>
+                              <div className="praxis-subcell">{charge.concept}</div>
+                              <div className="praxis-subcell">{renderStatusDetail(charge)}</div>
                             </div>
-                            {charge.status !== 'SETTLED' && (
-                              <div className="praxis-mobile-card-actions">
-                                <button
-                                  type="button"
-                                  className="praxis-action-btn warn"
-                                  onClick={() => setReminderTargetId(charge.id)}
-                                >
-                                  🔔 Recordar
-                                </button>
-                                <button
-                                  type="button"
-                                  className="praxis-action-btn"
-                                  onClick={() => openPaymentBuilder(charge.customerId, 'CODI_QR')}
-                                >
-                                  🏁 QR
-                                </button>
-                                <button
-                                  type="button"
-                                  className="praxis-action-btn ok"
-                                  onClick={() => handleMarkSettled(charge.id)}
-                                >
-                                  ⚡ Pagar
-                                </button>
-                              </div>
-                            )}
+                            <div className="text-right">
+                              <strong className="tabular">{formatMxnCents(charge.amountCents)}</strong>
+                              <div>{renderBadge(charge)}</div>
+                            </div>
                           </div>
-                        );
-                      })}
+                          <div className="praxis-mobile-card-actions">{renderActions(charge)}</div>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
               </div>
             )}
 
-            {/* ========================================================= */}
-            {/* PANTALLA 2: CLIENTES Y SALDOS (Per Client Balance)        */}
-            {/* ========================================================= */}
             {screen === 'clients' && (
               <div className="praxis-stack">
                 <div className="praxis-section-head">
                   <div>
-                    <h3>Clientes y Saldos (Per Client Balance)</h3>
+                    <h3>Clientes y saldos</h3>
                     <p className="praxis-muted">
-                      Control de saldo pendiente e historial pagado por cada alumno o cliente.
+                      {customers.counts.overdue} vencidos · {customers.counts.pending} pendientes · {customers.counts.upToDate} al día ·
+                      plan {summary.customers.plan} ({summary.customers.active}/{summary.customers.limit ?? '∞'})
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    className="praxis-btn-primary"
-                    onClick={() => setShowNewCustomerModal(true)}
-                  >
-                    + Nuevo Cliente
-                  </button>
                 </div>
-
-                <div className="praxis-clients-grid">
-                  {customerBalances.map(({ customer, pendingAmountCents, settledAmountCents }) => (
-                    <div key={customer.id} className="praxis-card praxis-client-card">
-                      <div className="praxis-client-top">
-                        <div>
-                          <strong>{customer.name}</strong>
-                          <div className="praxis-subcell">{customer.notes || 'Cliente activo'}</div>
-                        </div>
-                        {pendingAmountCents > 0 ? (
-                          <span className="praxis-badge praxis-badge-pending tabular">
-                            Debe {formatMxnCents(pendingAmountCents)}
-                          </span>
-                        ) : (
-                          <span className="praxis-badge praxis-badge-paid">✓ Al día</span>
-                        )}
-                      </div>
-
-                      <div className="praxis-client-balances">
-                        <div>
-                          <span>Por cobrar</span>
-                          <strong className="tabular">{formatMxnCents(pendingAmountCents)}</strong>
-                        </div>
-                        <div>
-                          <span>Pagado</span>
-                          <strong className="tabular">{formatMxnCents(settledAmountCents)}</strong>
-                        </div>
-                      </div>
-
-                      <div className="praxis-subcell tabular">
-                        📱 {customer.phone} · ✉️ {customer.email}
-                      </div>
-
-                      <div className="praxis-row-actions">
-                        <button
-                          type="button"
-                          className="praxis-btn-primary"
-                          onClick={() => openPaymentBuilder(customer.id, 'PAYMENT_LINK')}
-                        >
-                          🔗 Cobrar con Link
-                        </button>
-                        <button
-                          type="button"
-                          className="praxis-btn-secondary"
-                          onClick={() => openPaymentBuilder(customer.id, 'CODI_QR')}
-                        >
-                          🏁 QR CoDi
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <div className="praxis-clients-grid">{customers.customers.map(renderCustomerCard)}</div>
               </div>
             )}
 
-            {/* ========================================================= */}
-            {/* PANTALLA 3: SOLICITAR PAGO (PAYMENT_LINK y CODI_QR)       */}
-            {/* ========================================================= */}
             {screen === 'payment' && (
               <div className="praxis-payment-grid">
                 <form onSubmit={handleCreateCharge} className="praxis-card praxis-stack">
                   <div>
-                    <span className="praxis-stage-tag">Stage 2 · Request Payment</span>
-                    <h3>Crear y enviar cobro</h3>
+                    <span className="praxis-stage-tag">Módulo de cobros · simulado</span>
+                    <h3>Crear cobro</h3>
                   </div>
-
                   <div className="form-field">
-                    <label htmlFor="praxis-pay-customer">1. Cliente / Alumno</label>
-                    <select
-                      id="praxis-pay-customer"
-                      value={selectedCustomerId}
-                      onChange={(e) => setSelectedCustomerId(e.target.value)}
-                    >
-                      {customers.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name} ({c.phone})
+                    <label htmlFor="praxis-pay-customer">Cliente</label>
+                    <select id="praxis-pay-customer" value={newCustomerId} onChange={(e) => setNewCustomerId(e.target.value)}>
+                      {customers.customers.map((row) => (
+                        <option key={row.customerId} value={row.customerId}>
+                          {row.name}
                         </option>
                       ))}
                     </select>
                   </div>
-
                   <div className="form-field">
-                    <label htmlFor="praxis-pay-concept">2. Servicio o Concepto</label>
-                    <div className="praxis-chips">
-                      {services.map((service) => (
-                        <button
-                          key={service.name}
-                          type="button"
-                          className="praxis-chip"
-                          onClick={() => {
-                            setConcept(service.name);
-                            setAmountPesos(String(service.feeCents / 100));
-                          }}
-                        >
-                          {service.name} · {formatMxnCents(service.feeCents)}
-                        </button>
-                      ))}
-                    </div>
-                    <input
-                      id="praxis-pay-concept"
-                      type="text"
-                      maxLength={40}
-                      value={concept}
-                      onChange={(e) => setConcept(e.target.value)}
-                      required
-                    />
+                    <label htmlFor="praxis-pay-concept">Concepto (máx. {CONCEPT_MAX_LENGTH})</label>
+                    <input id="praxis-pay-concept" maxLength={CONCEPT_MAX_LENGTH} value={newConcept} onChange={(e) => setNewConcept(e.target.value)} required />
                   </div>
-
                   <div className="form-field">
-                    <label htmlFor="praxis-pay-amount">3. Monto en MXN (se procesa en centavos enteros)</label>
-                    <input
-                      id="praxis-pay-amount"
-                      type="number"
-                      min="1"
-                      max="8000"
-                      step="1"
-                      value={amountPesos}
-                      onChange={(e) => setAmountPesos(e.target.value)}
-                      required
-                    />
+                    <label htmlFor="praxis-pay-amount">Monto en MXN</label>
+                    <input id="praxis-pay-amount" type="number" min="0.01" step="0.01" value={newAmount} onChange={(e) => setNewAmount(e.target.value)} required />
                   </div>
-
                   <div className="form-field">
-                    <label>4. Método de cobro en api.pey.mx</label>
-                    <div className="praxis-method-grid">
-                      <button
-                        type="button"
-                        className={`praxis-method-card ${selectedChannel === 'PAYMENT_LINK' ? 'active' : ''}`}
-                        onClick={() => setSelectedChannel('PAYMENT_LINK')}
-                      >
-                        <strong>🔗 Payment Link</strong>
-                        <span>POST /payment-link/create (WhatsApp / Correo)</span>
-                      </button>
-                      <button
-                        type="button"
-                        className={`praxis-method-card ${selectedChannel === 'CODI_QR' ? 'active' : ''}`}
-                        onClick={() => setSelectedChannel('CODI_QR')}
-                      >
-                        <strong>🏁 Código QR CoDi</strong>
-                        <span>POST /codi/qr (Escaneo presencial)</span>
-                      </button>
-                    </div>
+                    <label htmlFor="praxis-pay-due">Fecha límite</label>
+                    <input id="praxis-pay-due" type="date" value={newDueDate} onChange={(e) => setNewDueDate(e.target.value)} required />
                   </div>
-
                   <button type="submit" className="praxis-btn-accent">
-                    Generar Cobro y Guardar →
+                    Generar cobro →
                   </button>
                 </form>
 
                 <div className="praxis-card praxis-stack">
-                  {selectedChannel === 'PAYMENT_LINK' ? (
-                    <>
-                      <span className="praxis-stage-tag">Vista previa · Payment Link</span>
-                      <div className="praxis-preview-dark">
-                        <div className="praxis-preview-top">
-                          <span>{profile.businessName}</span>
-                          <span>CLABE •••• {profile.clabeLast4}</span>
-                        </div>
-                        <strong>
-                          {concept} · {activeCustomer.name}
-                        </strong>
-                        <div className="praxis-preview-amount tabular">
-                          {formatMxnCents(previewAmountCents)}
-                        </div>
-                        <code className="praxis-preview-url">{previewPaymentLink}</code>
-                      </div>
-                      <a
-                        className="praxis-btn-accent text-center"
-                        href={`https://wa.me/52${activeCustomer.phone}?text=${encodeURIComponent(
-                          `Hola ${activeCustomer.name}, te comparto tu link de pago por ${formatMxnCents(previewAmountCents)} (${concept}): ${previewPaymentLink}`,
-                        )}`}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        💬 Enviar Link por WhatsApp
-                      </a>
-                    </>
-                  ) : (
-                    <>
-                      <span className="praxis-stage-tag">Vista previa · QR CoDi (POST /codi/qr)</span>
-                      <div className="praxis-qr-box">
-                        <div className="praxis-preview-amount tabular">
-                          {formatMxnCents(previewAmountCents)}
-                        </div>
-                        <div className="praxis-subcell">
-                          {concept} · {activeCustomer.name}
-                        </div>
-                        <svg viewBox="0 0 120 120" className="praxis-qr-svg" aria-label="Código QR CoDi">
-                          <rect x="8" y="8" width="32" height="32" rx="4" fill="none" stroke="#151D2D" strokeWidth="6" />
-                          <rect x="18" y="18" width="12" height="12" rx="2" fill="#151D2D" />
-                          <rect x="80" y="8" width="32" height="32" rx="4" fill="none" stroke="#151D2D" strokeWidth="6" />
-                          <rect x="90" y="18" width="12" height="12" rx="2" fill="#151D2D" />
-                          <rect x="8" y="80" width="32" height="32" rx="4" fill="none" stroke="#151D2D" strokeWidth="6" />
-                          <rect x="18" y="90" width="12" height="12" rx="2" fill="#151D2D" />
-                          <rect x="48" y="48" width="24" height="24" rx="4" fill="#151D2D" />
-                          <rect x="52" y="84" width="16" height="8" fill="#151D2D" />
-                          <rect x="78" y="78" width="12" height="12" fill="#151D2D" />
-                        </svg>
-                        <div className="praxis-subcell">
-                          Escanea desde cualquier app bancaria · 0% comisión
-                        </div>
-                      </div>
-                    </>
+                  <span className="praxis-stage-tag">Vista previa</span>
+                  <div className="praxis-preview-dark">
+                    <div className="praxis-preview-top">
+                      <span>{profile.business.name}</span>
+                      <span>CLABE {clabeLabel}</span>
+                    </div>
+                    <strong>
+                      {newConcept} · {activeCustomer?.name ?? 'Cliente'}
+                    </strong>
+                    <div className="praxis-preview-amount tabular">{formatMxnCents(previewAmountCents)}</div>
+                    <span className="praxis-subcell">Vence {formatDate(newDueDate)}</span>
+                  </div>
+                  {activeCustomer && customerPhones[activeCustomer.customerId] && (
+                    <a
+                      className="praxis-btn-accent text-center"
+                      href={`https://wa.me/52${customerPhones[activeCustomer.customerId]}?text=${encodeURIComponent(
+                        `Hola ${activeCustomer.name}, te comparto tu cobro por ${formatMxnCents(previewAmountCents)} (${newConcept}).`,
+                      )}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      💬 Enviar por WhatsApp
+                    </a>
                   )}
                 </div>
               </div>
             )}
 
-            {/* ========================================================= */}
-            {/* PANTALLA 4: FLUJO DE WORKFLOW (3 STAGES)                  */}
-            {/* ========================================================= */}
             {screen === 'workflow' && (
-              <div className="praxis-stack">
-                <div className="praxis-kpi-grid">
-                  <div className="praxis-card">
-                    <span className="praxis-stage-tag">Stage 1 · Onboarding</span>
-                    <h3>Registro + CLABE + 1.er Cliente</h3>
-                    <ul className="praxis-list">
-                      <li>Captura propietario, profesión, negocio, giro, RFC y régimen fiscal (<code>POST /api/onboarding</code>).</li>
-                      <li>Enruta pagos directo a la CLABE del profesional (<code>•••• {profile.clabeLast4}</code>).</li>
-                      <li>Activa guía inmediata: <strong>Haz tu 1.er cobro</strong>.</li>
-                    </ul>
-                  </div>
-
-                  <div className="praxis-card">
-                    <span className="praxis-stage-tag">Stage 2 · Payments (pey)</span>
-                    <h3>Payment Link + CoDi QR</h3>
-                    <ul className="praxis-list">
-                      <li><strong>PAYMENT_LINK (<code>POST /payment-link/create</code>):</strong> genera URL para enviar por WhatsApp, correo o mensaje.</li>
-                      <li><strong>CODI_QR (<code>POST /codi/qr</code>):</strong> presenta código QR dinámico en pantalla para cobro presencial.</li>
-                      <li>Montos representados internamente en centavos enteros (<code>amountCents</code>).</li>
-                    </ul>
-                  </div>
-
-                  <div className="praxis-card">
-                    <span className="praxis-stage-tag">Stage 3 · Dashboard & Clientes</span>
-                    <h3>Conciliación, Filtros y Recordatorios</h3>
-                    <ul className="praxis-list">
-                      <li>Tabla con filtros (<code>Todos · Pendientes · Completados · Vencidos</code>) y badges semánticos.</li>
-                      <li>Envío de recordatorios en un clic (<code>MSJ Reminder</code>).</li>
-                      <li>Cálculo automático de saldo por cliente (<code>Per Client Balance</code>) al recibir el webhook firmado de <code>pey</code>.</li>
-                    </ul>
-                  </div>
+              <div className="praxis-kpi-grid">
+                <div className="praxis-card">
+                  <span className="praxis-stage-tag">Etapa 1 · Registro</span>
+                  <h3>Onboarding + CLABE</h3>
+                  <ul className="praxis-list">
+                    <li><code>POST /api/onboarding</code> guarda negocio, RFC y CLABE.</li>
+                    <li>El dinero va directo a la CLABE ({clabeLabel}).</li>
+                  </ul>
+                </div>
+                <div className="praxis-card">
+                  <span className="praxis-stage-tag">Etapa 2 · Cobros (pey)</span>
+                  <h3>Payment Link + CoDi</h3>
+                  <ul className="praxis-list">
+                    <li>Los crea el módulo de cobros (<code>POST /api/payments</code>).</li>
+                    <li>pey notifica el pago por webhook.</li>
+                  </ul>
+                </div>
+                <div className="praxis-card">
+                  <span className="praxis-stage-tag">Etapa 3 · Dashboard</span>
+                  <h3>Ver y actualizar cobros</h3>
+                  <ul className="praxis-list">
+                    <li>Estados: pendiente, vencido, pagado y cancelado.</li>
+                    <li>Registrar pago manual, cancelar y editar con control de versión.</li>
+                  </ul>
                 </div>
               </div>
             )}
 
-            {/* ========================================================= */}
-            {/* PANTALLA 5: PERFIL DEL CONTRATISTA                        */}
-            {/* ========================================================= */}
             {screen === 'profile' && (
               <div className="praxis-card praxis-stack">
-                <h3>Perfil del Contratista (`/api/contractors/{'{id}'}/dashboard/profile`)</h3>
+                <h3>Perfil del negocio</h3>
                 <div className="praxis-profile-grid">
-                  <div>
-                    <span className="praxis-subcell">Nombre</span>
-                    <strong>{profile.ownerName}</strong>
-                  </div>
-                  <div>
-                    <span className="praxis-subcell">Negocio</span>
-                    <strong>{profile.businessName}</strong>
-                  </div>
-                  <div>
-                    <span className="praxis-subcell">Profesión</span>
-                    <strong>{profile.profession}</strong>
-                  </div>
-                  <div>
-                    <span className="praxis-subcell">Giro / Actividad</span>
-                    <strong>{profile.businessActivity}</strong>
-                  </div>
+                  <div><span className="praxis-subcell">Nombre</span><strong>{profile.name}</strong></div>
+                  <div><span className="praxis-subcell">Negocio</span><strong>{profile.business.name}</strong></div>
+                  <div><span className="praxis-subcell">Profesión</span><strong>{profile.profession}</strong></div>
+                  <div><span className="praxis-subcell">Giro</span><strong>{profile.business.activity}</strong></div>
                   <div>
                     <span className="praxis-subcell">RFC / Régimen</span>
                     <strong>
-                      {profile.rfc} · {profile.taxRegime}
+                      {profile.business.rfc} · {profile.business.taxRegime ?? 'Por definir'} ({profile.business.taxpayerType === 'individual' ? 'persona física' : profile.business.taxpayerType === 'company' ? 'persona moral' : 'tipo desconocido'})
                     </strong>
                   </div>
+                  <div><span className="praxis-subcell">Cuenta de depósito</span><strong>CLABE {clabeLabel}</strong></div>
+                  <div><span className="praxis-subcell">Contacto</span><strong>{profile.contact.name} · {profile.contact.phone}</strong></div>
                   <div>
-                    <span className="praxis-subcell">Cuenta destino en pey</span>
-                    <strong>CLABE •••• {profile.clabeLast4} (Activa)</strong>
+                    <span className="praxis-subcell">Registro</span>
+                    <strong>
+                      {profile.onboarding.status === 'complete' ? 'Completo' : `Falta: ${profile.onboarding.pendingFields.join(', ')}`}
+                    </strong>
                   </div>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Barra inferior cuando está activa la Vista Móvil */}
           {viewport === 'mobile' && (
             <nav className="praxis-mobile-bottom-nav" aria-label="Navegación móvil">
-              <button type="button" onClick={() => setScreen('dashboard')} className={screen === 'dashboard' ? 'active' : ''}>
-                📊 Dashboard
-              </button>
-              <button type="button" onClick={() => setScreen('clients')} className={screen === 'clients' ? 'active' : ''}>
-                👥 Clientes
-              </button>
-              <button type="button" onClick={() => setScreen('payment')} className={screen === 'payment' ? 'active' : ''}>
-                ➕ Cobrar
-              </button>
-              <button type="button" onClick={() => setScreen('workflow')} className={screen === 'workflow' ? 'active' : ''}>
-                🗺️ Flujo
-              </button>
+              <button type="button" onClick={() => setScreen('dashboard')} className={screen === 'dashboard' ? 'active' : ''}>📊 Dashboard</button>
+              <button type="button" onClick={() => setScreen('clients')} className={screen === 'clients' ? 'active' : ''}>👥 Clientes</button>
+              <button type="button" onClick={() => setScreen('payment')} className={screen === 'payment' ? 'active' : ''}>➕ Cobrar</button>
+              <button type="button" onClick={() => setScreen('profile')} className={screen === 'profile' ? 'active' : ''}>👤 Perfil</button>
             </nav>
           )}
         </div>
       </div>
 
-      {/* Modal: Recordatorio MSJ Reminder */}
-      {reminderTarget && (
-        <div className="praxis-modal-backdrop" role="dialog" aria-modal="true" aria-label="Enviar recordatorio">
-          <div className="praxis-modal">
-            <h4>Recordatorio de pago (MSJ Reminder)</h4>
+      {modal && (
+        <div className="praxis-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="dashboard-modal-title">
+          <div className="praxis-modal praxis-stack">
+            <h4 id="dashboard-modal-title">
+              {{ reminder: 'Enviar recordatorio', payment: 'Registrar pago manual', cancel: 'Cancelar cobro', edit: 'Editar cobro' }[modal.kind]}
+            </h4>
             <p className="praxis-muted">
-              Cliente: <strong>{findCustomer(reminderTarget.customerId).name}</strong> ·{' '}
-              <strong>{formatMxnCents(reminderTarget.amountCents)}</strong> ({reminderTarget.concept})
+              <strong>{modal.charge.customerName}</strong> · {modal.charge.concept} · <strong>{formatMxnCents(modal.charge.amountCents)}</strong> · v
+              {modal.charge.version}
             </p>
-            <div className="praxis-row-actions">
-              <button
-                type="button"
-                className="praxis-btn-accent"
-                onClick={() => handleSendReminder(reminderTarget.id, 'WhatsApp')}
-              >
-                💬 Enviar por WhatsApp
-              </button>
-              <button
-                type="button"
-                className="praxis-btn-primary"
-                onClick={() => handleSendReminder(reminderTarget.id, 'Correo')}
-              >
-                ✉️ Enviar por Correo
-              </button>
-              <button
-                type="button"
-                className="praxis-btn-secondary"
-                onClick={() => setReminderTargetId(null)}
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            {modalErrors.form && <p role="alert" className="field-error">{modalErrors.form}</p>}
 
-      {/* Modal: Nuevo Cliente */}
-      {showNewCustomerModal && (
-        <div className="praxis-modal-backdrop" role="dialog" aria-modal="true" aria-label="Nuevo cliente">
-          <form onSubmit={handleCreateCustomer} className="praxis-modal praxis-stack">
-            <h4>Agregar Nuevo Cliente</h4>
-            <div className="form-field">
-              <label htmlFor="new-cust-name">Nombre completo *</label>
-              <input id="new-cust-name" name="name" required />
-            </div>
-            <div className="form-field">
-              <label htmlFor="new-cust-phone">Teléfono (10 dígitos) *</label>
-              <input id="new-cust-phone" name="phone" maxLength={15} required />
-            </div>
-            <div className="form-field">
-              <label htmlFor="new-cust-email">Email</label>
-              <input id="new-cust-email" name="email" type="email" />
-            </div>
-            <div className="form-field">
-              <label htmlFor="new-cust-notes">Grupo / Horario</label>
-              <input id="new-cust-notes" name="notes" />
-            </div>
-            <div className="praxis-row-actions">
-              <button type="submit" className="praxis-btn-primary">
-                Guardar Cliente
-              </button>
-              <button
-                type="button"
-                className="praxis-btn-secondary"
-                onClick={() => setShowNewCustomerModal(false)}
-              >
-                Cancelar
-              </button>
-            </div>
-          </form>
+            {modal.kind === 'reminder' && (
+              <div className="praxis-row-actions">
+                <button type="button" disabled={busy} className="praxis-btn-accent" onClick={() => handleReminder(modal.charge, 'WhatsApp')}>
+                  💬 WhatsApp
+                </button>
+                <button type="button" disabled={busy} className="praxis-btn-primary" onClick={() => handleReminder(modal.charge, 'Correo')}>
+                  ✉️ Correo
+                </button>
+                <button type="button" className="praxis-btn-secondary" onClick={() => setModal(null)}>Cerrar</button>
+              </div>
+            )}
+
+            {modal.kind === 'payment' && (
+              <form className="praxis-stack" onSubmit={(event) => handleManualPayment(event, modal.charge)}>
+                <div className="form-field">
+                  <label htmlFor="manual-method">Método</label>
+                  <select id="manual-method" name="method" defaultValue="cash">
+                    {MANUAL_PAYMENT_METHODS.map((method) => (
+                      <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-field">
+                  <label htmlFor="manual-note">Nota (opcional)</label>
+                  <input id="manual-note" name="note" maxLength={NOTE_MAX_LENGTH} />
+                </div>
+                <div className="praxis-row-actions">
+                  <button type="submit" disabled={busy} className="praxis-btn-accent">Marcar como pagado</button>
+                  <button type="button" className="praxis-btn-secondary" onClick={() => setModal(null)}>Cerrar</button>
+                </div>
+              </form>
+            )}
+
+            {modal.kind === 'cancel' && (
+              <form className="praxis-stack" onSubmit={(event) => handleCancel(event, modal.charge)}>
+                <div className="form-field">
+                  <label htmlFor="cancel-reason">Motivo (opcional)</label>
+                  <input id="cancel-reason" name="reason" maxLength={NOTE_MAX_LENGTH} />
+                </div>
+                <div className="praxis-row-actions">
+                  <button type="submit" disabled={busy} className="praxis-btn-primary">Cancelar cobro</button>
+                  <button type="button" className="praxis-btn-secondary" onClick={() => setModal(null)}>Volver</button>
+                </div>
+              </form>
+            )}
+
+            {modal.kind === 'edit' && (
+              <form className="praxis-stack" onSubmit={(event) => handleEdit(event, modal.charge)}>
+                {!canEdit(modal.charge, 'concept') && (
+                  <p className="praxis-muted">Este cobro está {modal.charge.status === 'paid' ? 'pagado' : 'cancelado'}: solo puedes cambiar la nota y las etiquetas.</p>
+                )}
+                <div className="form-field">
+                  <label htmlFor="edit-concept">{CHARGE_FIELD_LABELS.concept}</label>
+                  <input id="edit-concept" name="concept" maxLength={CONCEPT_MAX_LENGTH} defaultValue={modal.charge.concept} disabled={!canEdit(modal.charge, 'concept')} />
+                  {modalErrors.concept && <span className="field-error">{modalErrors.concept}</span>}
+                </div>
+                <div className="form-field">
+                  <label htmlFor="edit-amount">{CHARGE_FIELD_LABELS.amountCents} (MXN)</label>
+                  <input id="edit-amount" name="amount" type="number" min="0.01" step="0.01" defaultValue={modal.charge.amountCents / 100} disabled={!canEdit(modal.charge, 'amountCents')} />
+                  {modalErrors.amountCents && <span className="field-error">{modalErrors.amountCents}</span>}
+                </div>
+                <div className="form-field">
+                  <label htmlFor="edit-due">{CHARGE_FIELD_LABELS.dueDate}</label>
+                  <input id="edit-due" name="dueDate" type="date" defaultValue={modal.charge.dueDate} disabled={!canEdit(modal.charge, 'dueDate')} />
+                  {modalErrors.dueDate && <span className="field-error">{modalErrors.dueDate}</span>}
+                </div>
+                <div className="form-field">
+                  <label htmlFor="edit-note">{CHARGE_FIELD_LABELS.note}</label>
+                  <input id="edit-note" name="note" maxLength={NOTE_MAX_LENGTH} defaultValue={modal.charge.note ?? ''} />
+                  {modalErrors.note && <span className="field-error">{modalErrors.note}</span>}
+                </div>
+                <div className="form-field">
+                  <label htmlFor="edit-tags">{CHARGE_FIELD_LABELS.tags} (separadas por coma)</label>
+                  <input id="edit-tags" name="tags" defaultValue={modal.charge.tags.join(', ')} />
+                  {modalErrors.tags && <span className="field-error">{modalErrors.tags}</span>}
+                </div>
+                <div className="praxis-row-actions">
+                  <button type="submit" disabled={busy} className="praxis-btn-accent">Guardar cambios</button>
+                  <button type="button" className="praxis-btn-secondary" onClick={() => setModal(null)}>Cerrar</button>
+                </div>
+              </form>
+            )}
+          </div>
         </div>
       )}
     </section>

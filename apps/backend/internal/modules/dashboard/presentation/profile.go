@@ -17,6 +17,7 @@ type BusinessResponse struct {
 	RFC          string              `json:"rfc"`
 	TaxRegime    *string             `json:"taxRegime,omitempty"`
 	TaxpayerType domain.TaxpayerType `json:"taxpayerType"`
+	ClabeLast4   *string             `json:"clabeLast4"`
 }
 
 type ContactResponse struct {
@@ -41,6 +42,7 @@ func toProfileResponse(profile domain.Profile) ProfileResponse {
 			RFC:          profile.Business.RFC,
 			TaxRegime:    profile.Business.TaxRegime,
 			TaxpayerType: profile.Business.TaxpayerType,
+			ClabeLast4:   profile.Business.ClabeLast4,
 		},
 		Contact: ContactResponse{Name: profile.Contact.Name, Phone: profile.Contact.Phone, Email: profile.Contact.Email},
 		Onboarding: OnboardingSummaryResponse{

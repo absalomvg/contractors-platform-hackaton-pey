@@ -17,7 +17,7 @@ const fields = [
 
 type SubmissionState = { status: 'idle' | 'saving' } | { status: 'error'; message: string } | { status: 'success'; id: string };
 
-export function OnboardingForm({ gateway }: { gateway: OnboardingGateway }) {
+export function OnboardingForm({ gateway, onCreated }: { gateway: OnboardingGateway; onCreated?: (id: string) => void }) {
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submission, setSubmission] = useState<SubmissionState>({ status: 'idle' });
   const pending = useRef(false);
@@ -52,6 +52,7 @@ export function OnboardingForm({ gateway }: { gateway: OnboardingGateway }) {
       const onboarding = await gateway.create(input);
       setSubmission({ status: 'success', id: onboarding.id });
       form.reset();
+      onCreated?.(onboarding.id);
     } catch (error) {
       setErrors(error instanceof OnboardingError ? error.fields : {});
       setSubmission({ status: 'error', message: error instanceof OnboardingError ? error.message : 'No fue posible conectar con el servidor. Inténtalo de nuevo.' });
