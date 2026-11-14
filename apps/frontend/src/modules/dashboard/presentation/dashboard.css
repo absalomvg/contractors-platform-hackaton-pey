@@ -1045,3 +1045,41 @@
     transform: none;
   }
 }
+
+/* ---------- First charge stepper ---------- */
+.db-stepper { display: flex; flex-direction: column; gap: var(--db-space-5); }
+.db-stepper h2 { margin: 0; font-size: 1.25rem; }
+.db-stepper-progress { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--db-space-2); margin: 0; padding: 0; list-style: none; counter-reset: none; }
+.db-stepper-progress li { display: flex; flex-direction: column; align-items: center; gap: var(--db-space-1); position: relative; color: var(--db-ink-muted); font-size: .75rem; font-weight: 600; text-align: center; }
+.db-stepper-progress li + li::before { content: ''; position: absolute; top: 14px; right: calc(50% + 18px); width: calc(100% - 36px); height: 2px; background: var(--db-border); }
+.db-stepper-progress li.is-done + li::before { background: var(--db-success); }
+.db-stepper-dot { width: 28px; height: 28px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; border: 2px solid var(--db-border); background: var(--db-surface); font-variant-numeric: tabular-nums; }
+.db-stepper-dot svg { width: 14px; height: 14px; }
+.db-stepper-progress li.is-current { color: var(--db-ink); }
+.db-stepper-progress li.is-current .db-stepper-dot { border-color: var(--db-primary); background: var(--db-primary); color: var(--db-primary-ink); }
+.db-stepper-progress li.is-done .db-stepper-dot { border-color: var(--db-success); background: var(--db-success-bg); color: var(--db-success); }
+.db-stepper-eyebrow { font-size: .75rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--db-success); }
+.db-stepper-benefits { margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: var(--db-space-2); color: var(--db-ink-muted); }
+.db-stepper-options { display: grid; gap: var(--db-space-2); }
+@media (min-width: 768px) {
+  .db-stepper-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ---------- Payments list: quiet rows ---------- */
+.db-row-actions-compact { justify-content: flex-end; flex-wrap: nowrap; }
+.db-row-menu { position: relative; }
+.db-row-menu > summary { list-style: none; cursor: pointer; min-width: 36px; justify-content: center; font-weight: 800; }
+.db-row-menu > summary::-webkit-details-marker { display: none; }
+.db-row-menu-list { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; min-width: 200px; display: flex; flex-direction: column; padding: var(--db-space-1); background: var(--db-surface); border: 1px solid var(--db-border); border-radius: var(--db-radius-sm); box-shadow: 0 10px 24px rgba(21, 29, 45, .12); }
+.db-row-menu-list button { display: flex; align-items: center; gap: var(--db-space-2); padding: var(--db-space-2) var(--db-space-3); border: 0; border-radius: 8px; background: transparent; color: var(--db-ink); font: inherit; font-size: .85rem; text-align: left; cursor: pointer; }
+.db-row-menu-list button:hover, .db-row-menu-list button:focus-visible { background: var(--db-surface-muted); }
+.db-row-menu-list svg { width: 16px; height: 16px; }
+.db-table tr.is-new td, .db-charge-card.is-new { background: var(--db-success-bg); animation: db-row-new 2.4s ease-out; }
+@keyframes db-row-new { from { box-shadow: inset 4px 0 0 var(--db-success); } to { box-shadow: inset 0 0 0 transparent; } }
+@media (prefers-reduced-motion: reduce) {
+  .db-table tr.is-new td, .db-charge-card.is-new { animation: none; }
+}
+.db-empty-state { display: flex; flex-direction: column; align-items: flex-start; gap: var(--db-space-2); padding: var(--db-space-4) 0; }
+/* overflow-x: auto on the table wrapper would clip the open row menu. */
+.db-shell:has(.db-row-menu[open]),
+.db-table-wrap:has(.db-row-menu[open]) { overflow: visible; }

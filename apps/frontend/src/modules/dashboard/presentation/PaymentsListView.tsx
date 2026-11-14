@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import type { DashboardChargeDto, DashboardChargesDto } from '@platform/contracts';
 import {
   CHARGE_BADGE_LABELS,
@@ -23,6 +24,8 @@ interface PaymentsListViewProps {
   readonly onSearchChange: (next: string) => void;
   readonly onOpenAction: (kind: ChargeActionKind, charge: DashboardChargeDto) => void;
   readonly onCreatePayment: () => void;
+  /** Row to highlight, e.g. the charge just created. */
+  readonly highlightedChargeId?: string | null;
 }
 
 const BADGE_CLASS: Record<ChargeBadge, string> = {
@@ -51,30 +54,46 @@ export function PaymentsListView({
   onSearchChange,
   onOpenAction,
   onCreatePayment,
+  highlightedChargeId,
 }: PaymentsListViewProps) {
+  /** One primary action per row; the rest live in the "⋯" menu. */
   function renderActions(charge: DashboardChargeDto) {
+    const secondary: { kind: ChargeActionKind; label: string; icon: JSX.Element }[] =
+      charge.status === 'pending'
+        ? [
+            { kind: 'reminder', label: 'Enviar recordatorio', icon: <BellIcon /> },
+            { kind: 'edit', label: 'Editar', icon: <EditIcon /> },
+            { kind: 'cancel', label: 'Cancelar cobro', icon: <XIcon /> },
+          ]
+        : [{ kind: 'edit', label: 'Editar nota', icon: <EditIcon /> }];
     return (
-      <div className="db-row-actions">
+      <div className="db-row-actions db-row-actions-compact">
         {charge.status === 'pending' && (
-          <>
-            <button type="button" className="db-action-btn is-warn" onClick={() => onOpenAction('reminder', charge)}>
-              <BellIcon />
-              <span>Recordar</span>
-            </button>
-            <button type="button" className="db-action-btn is-ok" onClick={() => onOpenAction('payment', charge)}>
-              <CheckIcon />
-              <span>Registrar pago</span>
-            </button>
-            <button type="button" className="db-action-btn" onClick={() => onOpenAction('cancel', charge)}>
-              <XIcon />
-              <span>Cancelar</span>
-            </button>
-          </>
+          <button type="button" className="db-action-btn is-ok" onClick={() => onOpenAction('payment', charge)}>
+            <CheckIcon />
+            <span>Registrar pago</span>
+          </button>
         )}
-        <button type="button" className="db-action-btn" onClick={() => onOpenAction('edit', charge)}>
-          <EditIcon />
-          <span>Editar</span>
-        </button>
+        <details className="db-row-menu">
+          <summary className="db-action-btn" aria-label={`Más acciones para ${charge.concept} de ${charge.customerName}`}>
+            ⋯
+          </summary>
+          <div className="db-row-menu-list">
+            {secondary.map((item) => (
+              <button
+                key={item.kind}
+                type="button"
+                onClick={(event) => {
+                  event.currentTarget.closest('details')?.removeAttribute('open');
+                  onOpenAction(item.kind, charge);
+                }}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </div>
+        </details>
       </div>
     );
   }
@@ -121,7 +140,16 @@ export function PaymentsListView({
           />
         </div>
 
-        {charges.charges.length === 0 ? (
+        {filterCounts.all === 0 ? (
+          <div className="db-empty-state">
+            <strong>Aún no tienes cobros</strong>
+            <p className="db-muted">Crea tu primer cobro y aparecerá aquí con su estatus.</p>
+            <button type="button" className="db-btn-accent" onClick={onCreatePayment}>
+              <PlusIcon />
+              <span>Crear mi primer cobro</span>
+            </button>
+          </div>
+        ) : charges.charges.length === 0 ? (
           <p className="db-muted">No hay cobros que coincidan con este estatus o búsqueda.</p>
         ) : (
           <>
@@ -130,18 +158,12 @@ export function PaymentsListView({
               {charges.charges.map((charge) => {
                 const badge = chargeBadge(charge);
                 return (
-                  <article key={charge.chargeId} className="db-charge-card">
+                  <article key={charge.chargeId} className={`db-charge-card${charge.chargeId === highlightedChargeId ? ' is-new' : ''}`}>
                     <div className="db-charge-card-top">
                       <div>
                         <strong>{charge.customerName}</strong>
                         <p className="db-muted">{charge.concept}</p>
                         <p className="db-muted">{statusDetail(charge)}</p>
-                        {(charge.tags.length > 0 || charge.note) && (
-                          <p className="db-muted">
-                            {charge.tags.map((tag) => `#${tag}`).join(' ')}
-                            {charge.note ? ` · ${charge.note}` : ''}
-                          </p>
-                        )}
                       </div>
                       <div style={{ textAlign: 'right' }}>
                         <div className="db-charge-amount">{formatMxnCents(charge.amountCents)}</div>
@@ -163,7 +185,6 @@ export function PaymentsListView({
                     <th>Concepto</th>
                     <th className="text-right">Monto</th>
                     <th>Estatus</th>
-                    <th>Recordatorios</th>
                     <th className="text-right">Acciones</th>
                   </tr>
                 </thead>
@@ -171,22 +192,11 @@ export function PaymentsListView({
                   {charges.charges.map((charge) => {
                     const badge = chargeBadge(charge);
                     return (
-                      <tr key={charge.chargeId}>
+                      <tr key={charge.chargeId} className={charge.chargeId === highlightedChargeId ? 'is-new' : undefined}>
                         <td>
                           <strong>{charge.customerName}</strong>
-                          <div className="db-muted">
-                            {charge.chargeId} · v{charge.version}
-                          </div>
                         </td>
-                        <td>
-                          <strong>{charge.concept}</strong>
-                          {(charge.tags.length > 0 || charge.note) && (
-                            <div className="db-muted">
-                              {charge.tags.map((tag) => `#${tag}`).join(' ')}
-                              {charge.note ? ` · ${charge.note}` : ''}
-                            </div>
-                          )}
-                        </td>
+                        <td>{charge.concept}</td>
                         <td className="text-right tabular">
                           <strong>{formatMxnCents(charge.amountCents)}</strong>
                         </td>
@@ -194,7 +204,6 @@ export function PaymentsListView({
                           <span className={`db-badge ${BADGE_CLASS[badge]}`}>{CHARGE_BADGE_LABELS[badge]}</span>
                           <div className="db-muted">{statusDetail(charge)}</div>
                         </td>
-                        <td className="tabular">{charge.reminderCount} env.</td>
                         <td className="text-right">{renderActions(charge)}</td>
                       </tr>
                     );
