@@ -12,6 +12,8 @@ import type {
 } from '@platform/contracts';
 import {
   DashboardApiError,
+  type CreatedChargeResult,
+  type CustomersDirectoryGateway,
   type DashboardGateway,
   type NewChargeInput,
   type PaymentsGateway,
@@ -25,17 +27,22 @@ import {
   MAX_TAGS,
   NOTE_MAX_LENGTH,
   TAG_MAX_LENGTH,
+  mxPhoneDigits,
   todayInMexico,
+  validateNewCustomer,
+  type NewCustomerInput,
 } from '../domain/dashboard';
 
 /*
- * In-memory implementation of the dashboard contract, used while the charges
- * module does not exist. It applies the same rules the backend must enforce:
- * optimistic concurrency (`version`), editable fields per status, and which
- * charges can be paid or cancelled.
+ * Persistent local implementation (localStorage + in-memory fallback) of the
+ * dashboard, customer directory, and payments contract while backend endpoints
+ * beyond GET /profile are built. Automatically syncs the real `firstCustomer`
+ * saved during SQLite onboarding.
  */
 
 export const MOCK_CONTRACTOR_ID = 'demo';
+
+const STORAGE_PREFIX = 'contractors-platform.workspace.';
 
 const EDITABLE_FIELDS: Record<DashboardChargeDto['status'], ChargeField[]> = {
   pending: ['concept', 'dueDate', 'amountCents', 'note', 'tags'],
@@ -50,14 +57,16 @@ const DAY_MS = 86_400_000;
 
 const MESSAGES = {
   chargeNotFound: 'No se encontró el cobro.',
+  customerNotFound: 'No se encontró el cliente.',
   invalidCharge: 'Revisa los datos del cobro.',
+  invalidCustomer: 'Revisa los datos del cliente.',
   versionConflict: 'El cobro cambió mientras lo editabas. Revisa la versión actual.',
   fieldNotEditable: 'Este dato ya no se puede modificar.',
   chargeNotPayable: 'Este cobro ya está pagado o cancelado.',
   chargeNotCancellable: 'Solo puedes cancelar cobros pendientes.',
 } as const;
 
-interface MockCustomer {
+interface StoredCustomer {
   readonly customerId: string;
   readonly name: string;
   readonly phone: string;
@@ -66,15 +75,27 @@ interface MockCustomer {
 
 type StoredCharge = Omit<DashboardChargeDto, 'overdue' | 'editableFields' | 'customerName'>;
 
+interface WorkspaceState {
+  customers: StoredCustomer[];
+  charges: StoredCharge[];
+  sequence: number;
+  customerSequence: number;
+}
+
 function addDays(date: string, days: number): string {
   return new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
 }
 const instant = (date: string, time = '17:00:00') => `${date}T${time}-06:00`;
 const daysBetween = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / DAY_MS);
 
-/** Five records, one per state the dashboard must render. */
-function seed(today: string): { customers: MockCustomer[]; charges: StoredCharge[] } {
-  const customers: MockCustomer[] = [
+/** A new business starts with no customers or charges (first-charge stepper). */
+function emptyState(): WorkspaceState {
+  return { customers: [], charges: [], sequence: 0, customerSequence: 0 };
+}
+
+/** Five sample charges, one per state, loaded on demand from the profile. */
+function seed(today: string): WorkspaceState {
+  const customers: StoredCustomer[] = [
     { customerId: 'cus_mateo', name: 'Mateo Hernández', phone: '5541238910', email: 'mateo@ejemplo.mx' },
     { customerId: 'cus_sofia', name: 'Sofía Ramírez', phone: '5587654321', email: 'sofia@ejemplo.mx' },
     { customerId: 'cus_diego', name: 'Diego Castellanos', phone: '5533445566', email: 'diego@ejemplo.mx' },
@@ -99,11 +120,8 @@ function seed(today: string): { customers: MockCustomer[]; charges: StoredCharge
     tags: [],
   });
   const charges: StoredCharge[] = [
-    // 1. Pending, due in a few days.
     { ...base('ch_001', 'cus_mateo', 'Mensualidad', 85_000, 2, 6), tags: ['mensualidad'] },
-    // 2. Pending and overdue, two reminders sent.
     { ...base('ch_002', 'cus_sofia', 'Mensualidad anterior', 85_000, 20, -9), reminderCount: 2, tags: ['mensualidad'] },
-    // 3. Paid through pey (CoDi).
     {
       ...base('ch_003', 'cus_diego', 'Clase individual', 90_000, 8, -1),
       status: 'paid',
@@ -112,7 +130,6 @@ function seed(today: string): { customers: MockCustomer[]; charges: StoredCharge
       version: 2,
       updatedAt: instant(addDays(today, -3), '12:30:00'),
     },
-    // 4. Paid by hand (cash), recorded by the business.
     {
       ...base('ch_004', 'cus_lucia', 'Uniforme e inscripción', 120_000, 10, -4),
       status: 'paid',
@@ -123,7 +140,6 @@ function seed(today: string): { customers: MockCustomer[]; charges: StoredCharge
       version: 2,
       updatedAt: instant(addDays(today, -5), '18:10:00'),
     },
-    // 5. Cancelled by the business.
     {
       ...base('ch_005', 'cus_andres', 'Clínica sabatina', 35_000, 12, -2),
       status: 'cancelled',
@@ -133,7 +149,7 @@ function seed(today: string): { customers: MockCustomer[]; charges: StoredCharge
       updatedAt: instant(addDays(today, -6), '10:00:00'),
     },
   ];
-  return { customers, charges };
+  return { customers, charges, sequence: charges.length, customerSequence: customers.length };
 }
 
 const MOCK_PROFILE: DashboardProfileDto = {
@@ -158,34 +174,81 @@ function fail(status: number, message: string, code?: DashboardErrorCode, fields
 
 const normalize = (value: string) => value.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 
-export interface MockDashboard extends DashboardGateway, PaymentsGateway {
+function loadStoredState(contractorId: string): WorkspaceState {
+  if (typeof window === 'undefined') return emptyState();
+  try {
+    const raw = window.localStorage.getItem(`${STORAGE_PREFIX}${contractorId}`);
+    if (!raw) return emptyState();
+    const parsed = JSON.parse(raw) as Partial<WorkspaceState>;
+    if (!Array.isArray(parsed.customers) || !Array.isArray(parsed.charges)) {
+      return emptyState();
+    }
+    return {
+      customers: parsed.customers,
+      charges: parsed.charges,
+      sequence: typeof parsed.sequence === 'number' ? parsed.sequence : parsed.charges.length,
+      customerSequence: typeof parsed.customerSequence === 'number' ? parsed.customerSequence : parsed.customers.length,
+    };
+  } catch {
+    return emptyState();
+  }
+}
+
+function persistState(contractorId: string, state: WorkspaceState) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(`${STORAGE_PREFIX}${contractorId}`, JSON.stringify(state));
+  } catch {
+    /* Ignore storage quota errors in local prototype mode. */
+  }
+}
+
+export interface MockDashboard extends DashboardGateway, PaymentsGateway, CustomersDirectoryGateway {
   /** Simulates the pey webhook paying the oldest pending charge with CoDi. */
-  simulateProviderPayment(): string | null;
+  simulateProviderPayment(contractorId?: string): string | null;
   /** Simulates another device editing a charge, so the next write gets 409. */
-  simulateConcurrentEdit(chargeId: string): void;
-  reset(): void;
+  simulateConcurrentEdit(chargeId: string, contractorId?: string): void;
+  /** Empties the business: no customers or charges. */
+  reset(contractorId?: string): void;
+  /** Replaces the business data with the five sample charges. */
+  loadDemoData(contractorId?: string): void;
 }
 
 export function createMockDashboard(): MockDashboard {
-  let state = seed(todayInMexico());
-  let sequence = state.charges.length;
-
+  const states = new Map<string, WorkspaceState>();
   const today = () => todayInMexico();
   const now = () => new Date().toISOString();
-  const customerName = (id: string) => state.customers.find((c) => c.customerId === id)?.name ?? 'Cliente';
+
+  function getState(contractorId: string): WorkspaceState {
+    const existing = states.get(contractorId);
+    if (existing) return existing;
+    const loaded = loadStoredState(contractorId);
+    states.set(contractorId, loaded);
+    return loaded;
+  }
+
+  function saveState(contractorId: string, next: WorkspaceState) {
+    states.set(contractorId, next);
+    persistState(contractorId, next);
+  }
+
+  function customerName(state: WorkspaceState, id: string): string {
+    return state.customers.find((c) => c.customerId === id)?.name ?? 'Cliente';
+  }
+
   const isOverdue = (charge: StoredCharge) => charge.status === 'pending' && charge.dueDate < today();
 
-  function view(charge: StoredCharge): DashboardChargeDto {
+  function view(state: WorkspaceState, charge: StoredCharge): DashboardChargeDto {
     return {
       ...charge,
       tags: [...charge.tags],
-      customerName: customerName(charge.customerId),
+      customerName: customerName(state, charge.customerId),
       overdue: isOverdue(charge),
       editableFields: [...EDITABLE_FIELDS[charge.status]],
     };
   }
 
-  function find(chargeId: string): StoredCharge {
+  function findCharge(state: WorkspaceState, chargeId: string): StoredCharge {
     return state.charges.find((charge) => charge.chargeId === chargeId) ?? fail(404, MESSAGES.chargeNotFound);
   }
 
@@ -193,10 +256,15 @@ export function createMockDashboard(): MockDashboard {
     if (charge.version !== version) fail(409, MESSAGES.versionConflict, 'version_conflict');
   }
 
-  function save(next: StoredCharge): DashboardChargeDto {
+  function saveCharge(contractorId: string, next: StoredCharge): DashboardChargeDto {
+    const state = getState(contractorId);
     const stored = { ...next, version: next.version + 1, updatedAt: now() };
-    state.charges = state.charges.map((charge) => (charge.chargeId === stored.chargeId ? stored : charge));
-    return view(stored);
+    const nextState: WorkspaceState = {
+      ...state,
+      charges: state.charges.map((charge) => (charge.chargeId === stored.chargeId ? stored : charge)),
+    };
+    saveState(contractorId, nextState);
+    return view(nextState, stored);
   }
 
   function validate(body: UpdateDashboardChargeRequest) {
@@ -215,29 +283,27 @@ export function createMockDashboard(): MockDashboard {
     if (Object.keys(errors).length) fail(422, MESSAGES.invalidCharge, undefined, errors);
   }
 
-  function rows(): CustomerRowDto[] {
-    return state.customers.map((customer) => {
-      const own = state.charges.filter((charge) => charge.customerId === customer.customerId);
-      const pending = own.filter((charge) => charge.status === 'pending');
-      const overdue = pending.filter(isOverdue);
-      const upcoming = pending.filter((charge) => !isOverdue(charge)).map((charge) => charge.dueDate).sort();
-      const lastPaid = own
-        .filter((charge) => charge.status === 'paid')
-        .sort((a, b) => (b.paidAt ?? '').localeCompare(a.paidAt ?? ''))[0];
-      const standing: CustomerStanding = overdue.length ? 'overdue' : pending.length ? 'pending' : 'up_to_date';
-      return {
-        customerId: customer.customerId,
-        name: customer.name,
-        standing,
-        balance: {
-          outstandingCents: pending.reduce((sum, charge) => sum + charge.amountCents, 0),
-          overdueCents: overdue.reduce((sum, charge) => sum + charge.amountCents, 0),
-        },
-        lastPayment: lastPaid ? { amountCents: lastPaid.amountCents, paidAt: lastPaid.paidAt!, method: lastPaid.paymentMethod! } : null,
-        nextDueDate: upcoming[0] ?? null,
-        oldestDueDate: overdue.map((charge) => charge.dueDate).sort()[0] ?? null,
-      };
-    });
+  function buildCustomerRow(state: WorkspaceState, customer: StoredCustomer): CustomerRowDto {
+    const own = state.charges.filter((charge) => charge.customerId === customer.customerId);
+    const pending = own.filter((charge) => charge.status === 'pending');
+    const overdue = pending.filter(isOverdue);
+    const upcoming = pending.filter((charge) => !isOverdue(charge)).map((charge) => charge.dueDate).sort();
+    const lastPaid = own
+      .filter((charge) => charge.status === 'paid')
+      .sort((a, b) => (b.paidAt ?? '').localeCompare(a.paidAt ?? ''))[0];
+    const standing: CustomerStanding = overdue.length ? 'overdue' : pending.length ? 'pending' : 'up_to_date';
+    return {
+      customerId: customer.customerId,
+      name: customer.name,
+      standing,
+      balance: {
+        outstandingCents: pending.reduce((sum, charge) => sum + charge.amountCents, 0),
+        overdueCents: overdue.reduce((sum, charge) => sum + charge.amountCents, 0),
+      },
+      lastPayment: lastPaid ? { amountCents: lastPaid.amountCents, paidAt: lastPaid.paidAt!, method: lastPaid.paymentMethod! } : null,
+      nextDueDate: upcoming[0] ?? null,
+      oldestDueDate: overdue.map((charge) => charge.dueDate).sort()[0] ?? null,
+    };
   }
 
   const gateway: MockDashboard = {
@@ -245,7 +311,81 @@ export function createMockDashboard(): MockDashboard {
       return { ...MOCK_PROFILE, contractorId };
     },
 
+    syncFirstCustomer(contractorId, firstCustomer) {
+      if (!firstCustomer.name.trim()) return;
+      const state = getState(contractorId);
+      const phone = mxPhoneDigits(firstCustomer.phone);
+      const existingFirst = state.customers.find((customer) => customer.customerId === 'cus_first');
+      if (existingFirst) {
+        if (existingFirst.name === firstCustomer.name && existingFirst.phone === phone && existingFirst.email === firstCustomer.email) {
+          return;
+        }
+        const updated: WorkspaceState = {
+          ...state,
+          customers: state.customers.map((customer) =>
+            customer.customerId === 'cus_first'
+              ? { ...customer, name: firstCustomer.name, phone, email: firstCustomer.email }
+              : customer,
+          ),
+        };
+        saveState(contractorId, updated);
+        return;
+      }
+
+      const duplicate = state.customers.some(
+        (customer) => normalize(customer.name) === normalize(firstCustomer.name) && customer.phone === phone,
+      );
+      if (duplicate) return;
+
+      const updated: WorkspaceState = {
+        ...state,
+        customers: [
+          {
+            customerId: 'cus_first',
+            name: firstCustomer.name,
+            phone,
+            email: firstCustomer.email,
+          },
+          ...state.customers,
+        ],
+      };
+      saveState(contractorId, updated);
+    },
+
+    listPhones(contractorId) {
+      const state = getState(contractorId);
+      return Object.fromEntries(state.customers.map((customer) => [customer.customerId, customer.phone]));
+    },
+
+    async createCustomer(contractorId, input: NewCustomerInput) {
+      const normalized: NewCustomerInput = {
+        name: input.name.trim(),
+        phone: mxPhoneDigits(input.phone),
+        email: input.email.trim(),
+      };
+      const errors = validateNewCustomer(normalized);
+      if (Object.keys(errors).length) {
+        fail(422, MESSAGES.invalidCustomer, undefined, errors as Record<string, string>);
+      }
+      const state = getState(contractorId);
+      const nextSequence = state.customerSequence + 1;
+      const created: StoredCustomer = {
+        customerId: `cus_${String(nextSequence).padStart(3, '0')}`,
+        name: normalized.name,
+        phone: normalized.phone,
+        email: normalized.email,
+      };
+      const nextState: WorkspaceState = {
+        ...state,
+        customerSequence: nextSequence,
+        customers: [created, ...state.customers],
+      };
+      saveState(contractorId, nextState);
+      return buildCustomerRow(nextState, created);
+    },
+
     async summary(contractorId, query = {}) {
+      const state = getState(contractorId);
       const to = query.to ?? today();
       const from = query.from ?? `${to.slice(0, 8)}01`;
       const inPeriod = (date: string | null) => !!date && date.slice(0, 10) >= from && date.slice(0, 10) <= to;
@@ -256,10 +396,12 @@ export function createMockDashboard(): MockDashboard {
       const sum = (list: StoredCharge[]) => list.reduce((total, charge) => total + charge.amountCents, 0);
       const customersOf = (list: StoredCharge[]) => new Set(list.map((charge) => charge.customerId)).size;
       const codi = paid.filter((charge) => charge.paymentMethod === 'codi');
-      const debtors = rows()
+      const allRows = state.customers.map((customer) => buildCustomerRow(state, customer));
+      const debtors = allRows
         .filter((row) => row.balance.overdueCents > 0)
         .sort((a, b) => b.balance.overdueCents - a.balance.overdueCents)
         .slice(0, MAX_TOP_DEBTORS);
+
       return {
         contractorId,
         period: { from, to, timezone: DASHBOARD_TIMEZONE },
@@ -304,20 +446,21 @@ export function createMockDashboard(): MockDashboard {
       } satisfies DashboardSummaryDto;
     },
 
-    async charges(_contractorId, query: ChargesQuery = {}) {
+    async charges(contractorId, query: ChargesQuery = {}) {
+      const state = getState(contractorId);
       const term = query.search ? normalize(query.search) : '';
       const list = state.charges
         .filter((charge) => !query.status || charge.status === query.status)
         .filter((charge) => query.overdue === undefined || isOverdue(charge) === query.overdue)
         .filter((charge) => !query.customerId || charge.customerId === query.customerId)
         .filter((charge) => !query.tag || charge.tags.includes(query.tag))
-        .filter((charge) => !term || normalize(charge.concept).includes(term) || normalize(customerName(charge.customerId)).includes(term))
+        .filter((charge) => !term || normalize(charge.concept).includes(term) || normalize(customerName(state, charge.customerId)).includes(term))
         .sort((a, b) => {
           if (query.sort === 'amount') return b.amountCents - a.amountCents;
           if (query.sort === 'created') return b.createdAt.localeCompare(a.createdAt);
           return a.dueDate.localeCompare(b.dueDate);
         })
-        .map(view);
+        .map((charge) => view(state, charge));
       return {
         charges: list,
         totals: { count: list.length, amountCents: list.reduce((total, charge) => total + charge.amountCents, 0) },
@@ -325,9 +468,12 @@ export function createMockDashboard(): MockDashboard {
       };
     },
 
-    async customers(_contractorId, query = {}) {
+    async customers(contractorId, query = {}) {
+      const state = getState(contractorId);
       const term = query.search ? normalize(query.search) : '';
-      const all = rows().filter((row) => !term || normalize(row.name).includes(term));
+      const all = state.customers
+        .map((customer) => buildCustomerRow(state, customer))
+        .filter((row) => !term || normalize(row.name).includes(term));
       return {
         customers: all.filter((row) => !query.standing || row.standing === query.standing),
         counts: {
@@ -340,8 +486,9 @@ export function createMockDashboard(): MockDashboard {
       };
     },
 
-    async updateCharge(_contractorId, chargeId, body) {
-      const charge = find(chargeId);
+    async updateCharge(contractorId, chargeId, body) {
+      const state = getState(contractorId);
+      const charge = findCharge(state, chargeId);
       checkVersion(charge, body.version);
       const { version: _version, ...changes } = body;
       for (const field of Object.keys(changes) as ChargeField[]) {
@@ -350,7 +497,7 @@ export function createMockDashboard(): MockDashboard {
         }
       }
       validate(body);
-      return save({
+      return saveCharge(contractorId, {
         ...charge,
         concept: changes.concept?.trim() ?? charge.concept,
         dueDate: changes.dueDate ?? charge.dueDate,
@@ -360,12 +507,13 @@ export function createMockDashboard(): MockDashboard {
       });
     },
 
-    async recordManualPayment(_contractorId, chargeId, body) {
-      const charge = find(chargeId);
+    async recordManualPayment(contractorId, chargeId, body) {
+      const state = getState(contractorId);
+      const charge = findCharge(state, chargeId);
       checkVersion(charge, body.version);
       if (charge.status !== 'pending') fail(409, MESSAGES.chargeNotPayable, 'charge_not_payable');
       if (!MANUAL_PAYMENT_METHODS.includes(body.method)) fail(422, MESSAGES.invalidCharge, undefined, { method: 'Elige un método válido.' });
-      return save({
+      return saveCharge(contractorId, {
         ...charge,
         status: 'paid',
         paymentMethod: body.method,
@@ -374,20 +522,26 @@ export function createMockDashboard(): MockDashboard {
       });
     },
 
-    async cancelCharge(_contractorId, chargeId, body) {
-      const charge = find(chargeId);
+    async cancelCharge(contractorId, chargeId, body) {
+      const state = getState(contractorId);
+      const charge = findCharge(state, chargeId);
       checkVersion(charge, body.version);
       if (charge.status !== 'pending') fail(409, MESSAGES.chargeNotCancellable, 'charge_not_cancellable');
-      return save({ ...charge, status: 'cancelled', cancelledAt: now(), note: body.reason?.trim() || charge.note });
+      return saveCharge(contractorId, { ...charge, status: 'cancelled', cancelledAt: now(), note: body.reason?.trim() || charge.note });
     },
 
-    async createCharge(_contractorId, input: NewChargeInput) {
-      sequence += 1;
+    async createCharge(contractorId, input: NewChargeInput): Promise<CreatedChargeResult> {
+      const state = getState(contractorId);
+      if (!state.customers.some((customer) => customer.customerId === input.customerId)) {
+        fail(404, MESSAGES.customerNotFound);
+      }
+      const nextSequence = state.sequence + 1;
+      const chargeId = `ch_${String(nextSequence).padStart(3, '0')}`;
       const created: StoredCharge = {
-        chargeId: `ch_${String(sequence).padStart(3, '0')}`,
+        chargeId,
         version: 1,
         customerId: input.customerId,
-        concept: input.concept,
+        concept: input.concept.trim(),
         amountCents: input.amountCents,
         dueDate: input.dueDate,
         status: 'pending',
@@ -398,42 +552,58 @@ export function createMockDashboard(): MockDashboard {
         cancelledAt: null,
         reminderCount: 0,
         note: null,
-        tags: [],
+        tags: input.method === 'CODI_QR' ? ['codi'] : ['link'],
       };
-      state.charges = [created, ...state.charges];
-      return view(created);
+      const nextState: WorkspaceState = {
+        ...state,
+        sequence: nextSequence,
+        charges: [created, ...state.charges],
+      };
+      saveState(contractorId, nextState);
+      return {
+        charge: view(nextState, created),
+        method: input.method,
+        ...(input.method === 'PAYMENT_LINK'
+          ? { paymentLinkUrl: `https://pay.praxis-demo.mx/c/${chargeId}` }
+          : { codiQrString: `CODI://pay/${contractorId}/${chargeId}/${input.amountCents}` }),
+      };
     },
 
-    async sendReminder(_contractorId, chargeId) {
-      const charge = find(chargeId);
+    async sendReminder(contractorId, chargeId) {
+      const state = getState(contractorId);
+      const charge = findCharge(state, chargeId);
       if (charge.status !== 'pending') fail(409, MESSAGES.chargeNotPayable, 'charge_not_payable');
-      return save({ ...charge, reminderCount: charge.reminderCount + 1 });
+      return saveCharge(contractorId, { ...charge, reminderCount: charge.reminderCount + 1 });
     },
 
-    simulateProviderPayment() {
+    simulateProviderPayment(contractorId = MOCK_CONTRACTOR_ID) {
+      const state = getState(contractorId);
       const next = state.charges
         .filter((charge) => charge.status === 'pending')
         .sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
       if (!next) return null;
-      save({ ...next, status: 'paid', paymentMethod: 'codi', paidAt: now() });
+      saveCharge(contractorId, { ...next, status: 'paid', paymentMethod: 'codi', paidAt: now() });
       return next.chargeId;
     },
 
-    simulateConcurrentEdit(chargeId) {
-      const charge = find(chargeId);
-      state.charges = state.charges.map((item) =>
-        item.chargeId === chargeId ? { ...charge, version: charge.version + 1, updatedAt: now() } : item,
-      );
+    simulateConcurrentEdit(chargeId, contractorId = MOCK_CONTRACTOR_ID) {
+      const state = getState(contractorId);
+      const charge = findCharge(state, chargeId);
+      saveState(contractorId, {
+        ...state,
+        charges: state.charges.map((item) =>
+          item.chargeId === chargeId ? { ...item, version: item.version + 1, updatedAt: now() } : item,
+        ),
+      });
     },
 
-    reset() {
-      state = seed(todayInMexico());
-      sequence = state.charges.length;
+    reset(contractorId = MOCK_CONTRACTOR_ID) {
+      saveState(contractorId, emptyState());
+    },
+
+    loadDemoData(contractorId = MOCK_CONTRACTOR_ID) {
+      saveState(contractorId, seed(today()));
     },
   };
   return gateway;
-}
-
-export function mockCustomers(): readonly MockCustomer[] {
-  return seed(todayInMexico()).customers;
 }
