@@ -1,0 +1,15 @@
+body { margin: 0; background: #f6f7f9; color: #172337; font-family: system-ui, sans-serif; }
+main { max-width: 960px; margin: 4rem auto; padding: 0 1.5rem; }
+section { background: white; padding: 2rem; border-radius: 12px; }
+li { margin: 1rem 0; }
+button { cursor: pointer; padding: .6rem 1rem; }
+section + section { margin-top: 2rem; }
+.onboarding-fields { border: 0; margin: 0 0 1.5rem; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.onboarding-fields legend { padding: 0 0 1rem; font-weight: 600; }
+.form-field { display: flex; flex-direction: column; gap: .4rem; }
+.form-field input { min-width: 0; border: 1px solid #8c97a8; border-radius: 6px; padding: .65rem; font: inherit; }
+.form-field input:focus-visible, button:focus-visible { outline: 3px solid #315eaf; outline-offset: 2px; }
+.form-field input[aria-invalid="true"] { border-color: #a51c30; }
+.field-error { color: #a51c30; }
+button:disabled { cursor: wait; }
+@media (max-width: 600px) { .onboarding-fields { grid-template-columns: 1fr; } main { margin-top: 2rem; } section { padding: 1.25rem; } }
