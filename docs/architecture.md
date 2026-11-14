@@ -51,3 +51,9 @@ Hay dos adaptadores: memoria (por defecto, usado en las pruebas de rutas) y SQLi
 El backend usa un módulo Go independiente (`apps/backend/go.mod`); su única dependencia externa es el driver SQLite. `cmd/api` inicia el servidor; `internal/app` compone los módulos. Cada módulo vive en `internal/modules/<domain>` y expone `Register` en su raíz. Dominio y aplicación no dependen de HTTP. La memoria se protege con mutex para peticiones concurrentes y devuelve copias de los datos.
 
 El contrato público se documenta en `docs/openapi.json`; los DTO TypeScript de `packages/contracts` deben mantenerse alineados con los tipos JSON de Go. No hay generación automática de clientes. Las pruebas HTTP verifican creación, recuperación, obligatoriedad y respuestas de error.
+
+## Módulo dashboard
+
+`internal/modules/dashboard` es el tablero del microempresario (`contractor` en el código): vistas de lectura y acciones para actualizar sus cobros, todas bajo `/api/contractors/{contractorId}/dashboard`. El contrato completo está en `docs/dashboard-api.md`. No tiene almacenamiento propio: lee otros módulos mediante puertos (`domain.ProfileSource`, …) implementados con sus API públicas. Hoy solo `/profile` está implementado (lee `onboarding.Reader`); el resto espera al módulo de cobros y clientes. Las acciones de actualización delegan en ese módulo, que es dueño de los efectos en pey.
+
+Las rutas, los parámetros y los mensajes son constantes en `presentation/contract.go`; los valores enumerados son tipos con constantes en `domain` y se reflejan como `enum` en OpenAPI y como uniones literales en TypeScript. Al agregar un valor, actualizar los tres lugares.

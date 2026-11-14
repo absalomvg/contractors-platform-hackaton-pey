@@ -3,7 +3,7 @@
   "info": {
     "title": "Contractors Platform API",
     "version": "0.1.0",
-    "description": "REST API. English field names; Spanish human-facing errors. In-memory storage."
+    "description": "REST API for Mexican micro-businesses to issue charges to their customers, collect them through pey (CoDi or payment link) and follow them in a dashboard. In code, the business is a “contractor” and its id is the onboarding record id. English field names; Spanish human-facing errors."
   },
   "servers": [
     {
@@ -94,7 +94,10 @@
               }
             }
           }
-        }
+        },
+        "tags": [
+          "onboarding"
+        ]
       }
     },
     "/api/onboarding/{id}": {
@@ -132,6 +135,1336 @@
               }
             }
           }
+        },
+        "tags": [
+          "onboarding"
+        ]
+      }
+    },
+    "/api/contractors/{contractorId}/dashboard/profile": {
+      "get": {
+        "operationId": "getDashboardProfile",
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Dashboard header: contractor profile",
+        "description": "Derived from the onboarding record. Shows who the contractor is and which optional onboarding fields are still missing.\n\n**Status:** implemented.",
+        "parameters": [
+          {
+            "name": "contractorId",
+            "in": "path",
+            "required": true,
+            "description": "Contractor id (onboarding record id).",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardProfile"
+                },
+                "example": {
+                  "contractorId": "9f2c4e1ab37d4c8e9a0b1c2d3e4f5a6b",
+                  "name": "Ana",
+                  "profession": "Electrician",
+                  "business": {
+                    "name": "Electrical Services",
+                    "activity": "Electrical installations",
+                    "rfc": "AAA010101AAA",
+                    "taxpayerType": "company"
+                  },
+                  "contact": {
+                    "name": "Abarrotes Luis",
+                    "phone": "+52 555 123 4567",
+                    "email": "luis@example.com"
+                  },
+                  "onboarding": {
+                    "status": "incomplete",
+                    "pendingFields": [
+                      "taxRegime"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Contractor not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contractors/{contractorId}/dashboard/summary": {
+      "get": {
+        "operationId": "getDashboardSummary",
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "KPI cards",
+        "description": "Two kinds of figures:\n- **Period** (`collected`, `collectionRate`, `averageDaysToPay`, `reminders`, `commissionSavings`, `paymentMethods`): charges paid or issued between `from` and `to`.\n- **Snapshot at `generatedAt`** (`outstanding`, `overdue`, `customers`, `topDebtors`): current state, not filtered by period.\n\nAll amounts are integer MXN cents. Day boundaries use America/Mexico_City.\n\n**Status:** contract defined; not implemented yet (its data comes from the charges and customers modules).",
+        "parameters": [
+          {
+            "name": "contractorId",
+            "in": "path",
+            "required": true,
+            "description": "Contractor id (onboarding record id).",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "First day, inclusive. Default: first day of the current month.",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "example": "2026-11-01"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "Last day, inclusive. Default: today. `to - from` ≤ 366 days.",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "example": "2026-11-30"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "KPIs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardSummary"
+                },
+                "examples": {
+                  "november": {
+                    "summary": "Business on the free plan",
+                    "value": {
+                      "contractorId": "9f2c4e1ab37d4c8e9a0b1c2d3e4f5a6b",
+                      "period": {
+                        "from": "2026-11-01",
+                        "to": "2026-11-30",
+                        "timezone": "America/Mexico_City"
+                      },
+                      "currency": "MXN",
+                      "generatedAt": "2026-11-14T18:30:00-06:00",
+                      "collected": {
+                        "amountCents": 1200000,
+                        "count": 30,
+                        "changePercent": 12.5
+                      },
+                      "outstanding": {
+                        "amountCents": 160000,
+                        "count": 4,
+                        "customerCount": 3
+                      },
+                      "overdue": {
+                        "amountCents": 80000,
+                        "count": 2,
+                        "customerCount": 2,
+                        "oldestDaysOverdue": 9
+                      },
+                      "collectionRate": {
+                        "ratio": 0.88,
+                        "paidCount": 30,
+                        "issuedCount": 34
+                      },
+                      "averageDaysToPay": 1.4,
+                      "reminders": {
+                        "sent": 11,
+                        "paidWithoutReminderRatio": 0.7
+                      },
+                      "commissionSavings": {
+                        "amountCents": 52468,
+                        "assumption": {
+                          "feeRate": 0.036,
+                          "fixedFeeCents": 300,
+                          "vatRate": 0.16
+                        }
+                      },
+                      "paymentMethods": [
+                        {
+                          "method": "codi",
+                          "amountCents": 1040000,
+                          "count": 26
+                        },
+                        {
+                          "method": "card",
+                          "amountCents": 0,
+                          "count": 0
+                        },
+                        {
+                          "method": "cash",
+                          "amountCents": 120000,
+                          "count": 3
+                        },
+                        {
+                          "method": "transfer",
+                          "amountCents": 40000,
+                          "count": 1
+                        },
+                        {
+                          "method": "other",
+                          "amountCents": 0,
+                          "count": 0
+                        }
+                      ],
+                      "customers": {
+                        "active": 5,
+                        "plan": "free",
+                        "limit": 5
+                      },
+                      "topDebtors": [
+                        {
+                          "customerId": "cu_01",
+                          "name": "Abarrotes Luis",
+                          "amountCents": 40000,
+                          "overdueCount": 1,
+                          "oldestDueDate": "2026-11-05"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query. `errors` keys are the param names (`from`, `to`, …).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Contractor not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error computing KPIs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contractors/{contractorId}/dashboard/trend": {
+      "get": {
+        "operationId": "getDashboardTrend",
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Collected vs. charged over time (chart)",
+        "description": "Series for the main chart. Without `granularity`: `day` up to 31 days, `week` up to 182, `month` beyond.\n\n**Status:** contract defined; not implemented yet.",
+        "parameters": [
+          {
+            "name": "contractorId",
+            "in": "path",
+            "required": true,
+            "description": "Contractor id (onboarding record id).",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "First day, inclusive. Default: first day of the current month.",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "example": "2026-11-01"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "Last day, inclusive. Default: today. `to - from` ≤ 366 days.",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "example": "2026-11-30"
+          },
+          {
+            "name": "granularity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Granularity"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Series",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardTrend"
+                },
+                "example": {
+                  "contractorId": "9f2c4e1ab37d4c8e9a0b1c2d3e4f5a6b",
+                  "period": {
+                    "from": "2026-11-01",
+                    "to": "2026-11-03",
+                    "timezone": "America/Mexico_City"
+                  },
+                  "currency": "MXN",
+                  "granularity": "day",
+                  "buckets": [
+                    {
+                      "start": "2026-11-01",
+                      "end": "2026-11-01",
+                      "collectedCents": 80000,
+                      "paidCount": 2,
+                      "issuedCents": 120000,
+                      "issuedCount": 3
+                    },
+                    {
+                      "start": "2026-11-02",
+                      "end": "2026-11-02",
+                      "collectedCents": 0,
+                      "paidCount": 0,
+                      "issuedCents": 0,
+                      "issuedCount": 0
+                    },
+                    {
+                      "start": "2026-11-03",
+                      "end": "2026-11-03",
+                      "collectedCents": 40000,
+                      "paidCount": 1,
+                      "issuedCents": 40000,
+                      "issuedCount": 1
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query. `errors` keys are the param names (`from`, `to`, …).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Contractor not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contractors/{contractorId}/dashboard/customers": {
+      "get": {
+        "operationId": "listDashboardCustomers",
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Customers table with account standing",
+        "description": "Answers “who owes me” per customer. Snapshot at request time; not filtered by period. Only active customers.\n\n**Status:** contract defined; not implemented yet.",
+        "parameters": [
+          {
+            "name": "contractorId",
+            "in": "path",
+            "required": true,
+            "description": "Contractor id (onboarding record id).",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "standing",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/CustomerStanding"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "description": "Case- and accent-insensitive match on the name. Min 2 characters.",
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/CustomerSort"
+            },
+            "description": "Default: `overdue`."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Opaque `nextCursor` from the previous page. Keep the other params unchanged.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Customers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardCustomers"
+                },
+                "example": {
+                  "customers": [
+                    {
+                      "customerId": "cu_01",
+                      "name": "Abarrotes Luis",
+                      "standing": "overdue",
+                      "balance": {
+                        "outstandingCents": 80000,
+                        "overdueCents": 40000
+                      },
+                      "lastPayment": {
+                        "amountCents": 40000,
+                        "paidAt": "2026-10-28T19:02:11-06:00",
+                        "method": "codi"
+                      },
+                      "nextDueDate": "2026-11-20",
+                      "oldestDueDate": "2026-11-05"
+                    }
+                  ],
+                  "counts": {
+                    "all": 5,
+                    "overdue": 2,
+                    "pending": 1,
+                    "upToDate": 2
+                  },
+                  "nextCursor": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query or cursor (`errors`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Contractor not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contractors/{contractorId}/dashboard/customers/{customerId}": {
+      "get": {
+        "operationId": "getDashboardCustomer",
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Customer detail and charge history",
+        "description": "The customer screen: standing, lifetime totals and paginated charge history.\n\n**Status:** contract defined; not implemented yet.",
+        "parameters": [
+          {
+            "name": "contractorId",
+            "in": "path",
+            "required": true,
+            "description": "Contractor id (onboarding record id).",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Opaque `nextCursor` from the previous page. Keep the other params unchanged.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardCustomerDetail"
+                },
+                "example": {
+                  "customer": {
+                    "customerId": "cu_01",
+                    "name": "Abarrotes Luis",
+                    "standing": "overdue",
+                    "balance": {
+                      "outstandingCents": 80000,
+                      "overdueCents": 40000
+                    },
+                    "lastPayment": {
+                      "amountCents": 40000,
+                      "paidAt": "2026-10-28T19:02:11-06:00",
+                      "method": "codi"
+                    },
+                    "nextDueDate": "2026-11-20",
+                    "oldestDueDate": "2026-11-05"
+                  },
+                  "phone": "5512345678",
+                  "totals": {
+                    "paidCents": 320000,
+                    "paidCount": 8,
+                    "averageDaysToPay": 1.2
+                  },
+                  "charges": [
+                    {
+                      "chargeId": "ch_10",
+                      "concept": "Pedido 128",
+                      "amountCents": 40000,
+                      "dueDate": "2026-11-05",
+                      "status": "pending",
+                      "overdue": true,
+                      "createdAt": "2026-11-01T10:00:00-06:00",
+                      "paidAt": null,
+                      "paymentMethod": null,
+                      "reminderCount": 2,
+                      "customerId": "cu_01",
+                      "customerName": "Abarrotes Luis",
+                      "cancelledAt": null,
+                      "tags": [
+                        "mayoreo"
+                      ],
+                      "note": "Paga los viernes",
+                      "version": 3,
+                      "updatedAt": "2026-11-08T09:12:00-06:00",
+                      "editableFields": [
+                        "concept",
+                        "dueDate",
+                        "amountCents",
+                        "note",
+                        "tags"
+                      ]
+                    },
+                    {
+                      "chargeId": "ch_09",
+                      "concept": "Pedido 128",
+                      "amountCents": 40000,
+                      "dueDate": "2026-10-29",
+                      "status": "paid",
+                      "overdue": false,
+                      "createdAt": "2026-10-25T10:00:00-06:00",
+                      "paidAt": "2026-10-28T19:02:11-06:00",
+                      "paymentMethod": "codi",
+                      "reminderCount": 0,
+                      "customerId": "cu_01",
+                      "customerName": "Abarrotes Luis",
+                      "cancelledAt": null,
+                      "tags": [],
+                      "note": null,
+                      "version": 2,
+                      "updatedAt": "2026-10-28T19:02:11-06:00",
+                      "editableFields": [
+                        "note",
+                        "tags"
+                      ]
+                    }
+                  ],
+                  "nextCursor": "eyJjIjoiY2hfMDkifQ"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query or cursor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Contractor or customer not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contractors/{contractorId}/dashboard/charges": {
+      "get": {
+        "operationId": "listDashboardCharges",
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Charges table (all customers)",
+        "description": "Every charge of the business with filters. `from`/`to` filter by `dueDate`; without them, no date filter.\n\n**Status:** contract defined; not implemented yet.",
+        "parameters": [
+          {
+            "name": "contractorId",
+            "in": "path",
+            "required": true,
+            "description": "Business id (onboarding record id).",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ChargeStatus"
+            }
+          },
+          {
+            "name": "overdue",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "customerId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 30
+            },
+            "description": "Charges having this tag."
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 255
+            },
+            "description": "Case- and accent-insensitive match on concept or customer name."
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Due date from, inclusive."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Due date to, inclusive."
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ChargeSort"
+            },
+            "description": "Default: `due_date`."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque `nextCursor` of the previous page."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Charges",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardCharges"
+                },
+                "example": {
+                  "charges": [
+                    {
+                      "chargeId": "ch_10",
+                      "version": 3,
+                      "customerId": "cu_01",
+                      "customerName": "Abarrotes Luis",
+                      "concept": "Pedido 128",
+                      "amountCents": 40000,
+                      "dueDate": "2026-11-05",
+                      "status": "pending",
+                      "overdue": true,
+                      "createdAt": "2026-11-01T10:00:00-06:00",
+                      "updatedAt": "2026-11-08T09:12:00-06:00",
+                      "paidAt": null,
+                      "paymentMethod": null,
+                      "cancelledAt": null,
+                      "reminderCount": 2,
+                      "note": "Paga los viernes",
+                      "tags": [
+                        "mayoreo"
+                      ],
+                      "editableFields": [
+                        "concept",
+                        "dueDate",
+                        "amountCents",
+                        "note",
+                        "tags"
+                      ]
+                    }
+                  ],
+                  "totals": {
+                    "count": 1,
+                    "amountCents": 40000
+                  },
+                  "nextCursor": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query or cursor (`errors`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Business not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contractors/{contractorId}/dashboard/charges/{chargeId}": {
+      "get": {
+        "operationId": "getDashboardCharge",
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Charge detail and timeline",
+        "description": "Use `charge.version` for subsequent updates.\n\n**Status:** contract defined; not implemented yet.",
+        "parameters": [
+          {
+            "name": "contractorId",
+            "in": "path",
+            "required": true,
+            "description": "Business id (onboarding record id).",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "chargeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardChargeDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Business or charge not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateDashboardCharge",
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Edit a charge",
+        "description": "Edits billing fields of a `pending` charge (concept, due date, amount) or organization fields of any charge (note, tags). Billing changes emit `charge_updated`.\n\n**Status:** contract defined; not implemented yet.",
+        "parameters": [
+          {
+            "name": "contractorId",
+            "in": "path",
+            "required": true,
+            "description": "Business id (onboarding record id).",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "chargeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDashboardChargeRequest"
+              },
+              "example": {
+                "version": 3,
+                "dueDate": "2026-11-20",
+                "tags": [
+                  "mayoreo",
+                  "credito"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated; returns the charge with the new version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardCharge"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed JSON or unknown fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Business or charge not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`version_conflict`, `field_not_editable` or `payment_in_progress`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed (`errors`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contractors/{contractorId}/dashboard/charges/{chargeId}/manual-payment": {
+      "post": {
+        "operationId": "recordManualPayment",
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Mark as paid outside pey",
+        "description": "For cash, transfers or other money received outside pey. Sets `status = paid`, emits `payment_received` (PAGADO stamp). Only `pending` charges; the charges module invalidates any active pey request.\n\n**Status:** contract defined; not implemented yet.",
+        "parameters": [
+          {
+            "name": "contractorId",
+            "in": "path",
+            "required": true,
+            "description": "Business id (onboarding record id).",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "chargeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualPaymentRequest"
+              },
+              "example": {
+                "version": 3,
+                "method": "cash"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Paid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardCharge"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Business or charge not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`version_conflict`, `charge_not_payable` (already paid or cancelled) or `payment_in_progress`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contractors/{contractorId}/dashboard/charges/{chargeId}/cancel": {
+      "post": {
+        "operationId": "cancelDashboardCharge",
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Cancel a pending charge",
+        "description": "Sets `status = cancelled` and emits `charge_cancelled`. If the customer still pays an old pey request, the charges module records the payment and the charge becomes `paid`.\n\n**Status:** contract defined; not implemented yet.",
+        "parameters": [
+          {
+            "name": "contractorId",
+            "in": "path",
+            "required": true,
+            "description": "Business id (onboarding record id).",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "chargeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelChargeRequest"
+              },
+              "example": {
+                "version": 3,
+                "reason": "El cliente devolvió el pedido"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardCharge"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Business or charge not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`version_conflict`, `charge_not_cancellable` (not pending) or `payment_in_progress`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contractors/{contractorId}/dashboard/activity": {
+      "get": {
+        "operationId": "listDashboardActivity",
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Recent activity feed",
+        "description": "Initial load of the feed; live updates arrive through `streamDashboardEvents`.\n\n**Status:** contract defined; not implemented yet.",
+        "parameters": [
+          {
+            "name": "contractorId",
+            "in": "path",
+            "required": true,
+            "description": "Contractor id (onboarding record id).",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Opaque `nextCursor` from the previous page. Keep the other params unchanged.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Feed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardActivity"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "id": "ev_77",
+                      "type": "payment_received",
+                      "occurredAt": "2026-11-14T18:29:40-06:00",
+                      "customerId": "cu_02",
+                      "customerName": "Taller Martínez",
+                      "chargeId": "ch_12",
+                      "concept": "Pedido 128",
+                      "amountCents": 40000,
+                      "paymentMethod": "codi"
+                    }
+                  ],
+                  "nextCursor": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query or cursor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Contractor not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contractors/{contractorId}/dashboard/events": {
+      "get": {
+        "operationId": "streamDashboardEvents",
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Live dashboard updates (Server-Sent Events)",
+        "description": "Keeps the connection open and emits `dashboard.activity` with an `ActivityItem` as `data` each time something happens. On `payment_received`: show the PAGADO stamp and refetch `summary`, `trend` and the affected customer. The SSE `id` is the item id, so `Last-Event-ID` resumes after reconnecting. A heartbeat comment is sent every 15 s. If the stream is unavailable, poll `listDashboardActivity`.\n\n**Status:** contract defined; not implemented yet.",
+        "parameters": [
+          {
+            "name": "contractorId",
+            "in": "path",
+            "required": true,
+            "description": "Contractor id (onboarding record id).",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "description": "Last received item id; the server replays newer items.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Event stream",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "id: ev_77\nevent: dashboard.activity\ndata: {\"id\": \"ev_77\", \"type\": \"payment_received\", \"occurredAt\": \"2026-11-14T18:29:40-06:00\", \"customerId\": \"st_02\", \"customerName\": \"Taller Martínez\", \"chargeId\": \"ch_12\", \"concept\": \"Pedido 128\", \"amountCents\": 40000, \"paymentMethod\": \"codi\"}\n\n: heartbeat\n\n"
+              }
+            }
+          },
+          "404": {
+            "description": "Contractor not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -156,7 +1489,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 255,
-            "description": "7\u201315 digits; optional leading +, spaces, parentheses and hyphens."
+            "description": "7–15 digits; optional leading +, spaces, parentheses and hyphens."
           },
           "email": {
             "type": "string",
@@ -278,10 +1611,1340 @@
             "type": "object",
             "additionalProperties": {
               "type": "string"
+            },
+            "description": "Field → message, for 400/422 validation errors."
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "version_conflict",
+              "field_not_editable",
+              "charge_not_payable",
+              "charge_not_cancellable",
+              "payment_in_progress"
+            ],
+            "description": "Machine-readable reason for errors the UI must branch on. Absent for generic errors. Never parse `message`."
+          }
+        }
+      },
+      "TaxpayerType": {
+        "type": "string",
+        "enum": [
+          "individual",
+          "company",
+          "unknown"
+        ],
+        "description": "Derived from the RFC length: 13 characters → `individual` (persona física), 12 → `company` (persona moral), otherwise `unknown`."
+      },
+      "OnboardingStatus": {
+        "type": "string",
+        "enum": [
+          "complete",
+          "incomplete"
+        ],
+        "description": "`complete` when `pendingFields` is empty."
+      },
+      "OnboardingField": {
+        "type": "string",
+        "enum": [
+          "taxRegime"
+        ],
+        "description": "Optional onboarding field the client has not provided yet. Uses the JSON names of `CreateOnboardingRequest`."
+      },
+      "PaymentMethod": {
+        "type": "string",
+        "enum": [
+          "codi",
+          "card",
+          "cash",
+          "transfer",
+          "other"
+        ],
+        "description": "`codi`: CoDi through pey, no fee. `card`: card through a pey payment link, has a fee. Manual methods, recorded by the business for money received outside pey: `cash`, `transfer` (SPEI or deposit), `other`."
+      },
+      "Plan": {
+        "type": "string",
+        "enum": [
+          "free",
+          "pro"
+        ],
+        "description": "`free`: up to 5 active customers. `pro`: unlimited."
+      },
+      "Balance": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "amountCents",
+          "count",
+          "customerCount"
+        ],
+        "properties": {
+          "amountCents": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Unpaid amount. Integer MXN cents (40000 = $400.00)."
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Unpaid charges."
+          },
+          "customerCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Distinct customers with unpaid charges."
+          }
+        }
+      },
+      "DashboardProfile": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "contractorId",
+          "name",
+          "profession",
+          "business",
+          "contact",
+          "onboarding"
+        ],
+        "properties": {
+          "contractorId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "profession": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "business": {
+            "$ref": "#/components/schemas/DashboardBusiness"
+          },
+          "contact": {
+            "$ref": "#/components/schemas/DashboardContact"
+          },
+          "onboarding": {
+            "$ref": "#/components/schemas/DashboardOnboardingSummary"
+          }
+        }
+      },
+      "DashboardContact": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "phone",
+          "email"
+        ],
+        "description": "Contact data captured in onboarding (`client`).",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "phone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "email": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "format": "email"
+          }
+        }
+      },
+      "DashboardBusiness": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "activity",
+          "rfc",
+          "taxpayerType"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "Maps to onboarding `businessName`."
+          },
+          "activity": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "Maps to onboarding `businessActivity`."
+          },
+          "rfc": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "Normalized (trimmed, uppercased) RFC."
+          },
+          "taxRegime": {
+            "type": "string",
+            "maxLength": 255,
+            "description": "Omitted when the client has not provided it."
+          },
+          "taxpayerType": {
+            "$ref": "#/components/schemas/TaxpayerType"
+          }
+        }
+      },
+      "DashboardOnboardingSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "pendingFields"
+        ],
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/OnboardingStatus"
+          },
+          "pendingFields": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "$ref": "#/components/schemas/OnboardingField"
+            },
+            "description": "Always present; empty array when nothing is pending."
+          }
+        }
+      },
+      "DashboardSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "contractorId",
+          "period",
+          "currency",
+          "generatedAt",
+          "collected",
+          "outstanding",
+          "overdue",
+          "collectionRate",
+          "averageDaysToPay",
+          "reminders",
+          "commissionSavings",
+          "paymentMethods",
+          "customers",
+          "topDebtors"
+        ],
+        "properties": {
+          "contractorId": {
+            "type": "string"
+          },
+          "period": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "from",
+              "to",
+              "timezone"
+            ],
+            "description": "Resolved period (defaults applied).",
+            "properties": {
+              "from": {
+                "type": "string",
+                "format": "date"
+              },
+              "to": {
+                "type": "string",
+                "format": "date"
+              },
+              "timezone": {
+                "type": "string",
+                "const": "America/Mexico_City"
+              }
             }
+          },
+          "currency": {
+            "type": "string",
+            "const": "MXN"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Instant the snapshot figures refer to."
+          },
+          "collected": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "amountCents",
+              "count",
+              "changePercent"
+            ],
+            "description": "Period. Charges paid within the period, any method.",
+            "properties": {
+              "amountCents": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0,
+                "description": "Total paid. Integer MXN cents (40000 = $400.00)."
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Paid charges."
+              },
+              "changePercent": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "description": "% change of `amountCents` vs the previous period of equal length (12.5 = +12.5%). null when the previous period collected 0."
+              }
+            }
+          },
+          "outstanding": {
+            "$ref": "#/components/schemas/Balance",
+            "description": "Snapshot. All unpaid charges, overdue included. Answers “who owes me”."
+          },
+          "overdue": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "amountCents",
+              "count",
+              "customerCount",
+              "oldestDaysOverdue"
+            ],
+            "description": "Snapshot. Unpaid charges past their due date; subset of `outstanding`.",
+            "properties": {
+              "amountCents": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0,
+                "description": "Overdue amount. Integer MXN cents (40000 = $400.00)."
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Overdue charges."
+              },
+              "customerCount": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Distinct customers with overdue charges."
+              },
+              "oldestDaysOverdue": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 1,
+                "description": "Days since the oldest overdue due date. null when nothing is overdue."
+              }
+            }
+          },
+          "collectionRate": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ratio",
+              "paidCount",
+              "issuedCount"
+            ],
+            "description": "Period. Of the charges issued in the period, how many are already paid.",
+            "properties": {
+              "ratio": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 1,
+                "description": "paidCount / issuedCount. Decimal 0–1; null when the denominator is 0."
+              },
+              "paidCount": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Charges issued in the period and paid (at any time)."
+              },
+              "issuedCount": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Charges issued in the period."
+              }
+            }
+          },
+          "averageDaysToPay": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Period. Mean days from issue to payment for charges paid in the period, one decimal. null when nothing was paid."
+          },
+          "reminders": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "sent",
+              "paidWithoutReminderRatio"
+            ],
+            "description": "Period. Automatic reminders (WhatsApp).",
+            "properties": {
+              "sent": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Reminders sent in the period."
+              },
+              "paidWithoutReminderRatio": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Charges paid in the period without any reminder / charges paid in the period. Decimal 0–1; null when the denominator is 0."
+              }
+            }
+          },
+          "commissionSavings": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "amountCents",
+              "assumption"
+            ],
+            "description": "Period. Estimated card fees avoided on `codi` payments: Σ round((amount × feeRate + fixedFeeCents) × (1 + vatRate)). Only `codi` counts; card and manual methods are excluded.",
+            "properties": {
+              "amountCents": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0,
+                "description": "Estimated savings. Integer MXN cents (40000 = $400.00)."
+              },
+              "assumption": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "feeRate",
+                  "fixedFeeCents",
+                  "vatRate"
+                ],
+                "description": "Card fee used for the estimate, so the UI can explain it.",
+                "properties": {
+                  "feeRate": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "fixedFeeCents": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "vatRate": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                }
+              }
+            }
+          },
+          "paymentMethods": {
+            "type": "array",
+            "description": "Period. Breakdown of `collected`. Always one entry per PaymentMethod value, in enum order, zeros included.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "method",
+                "amountCents",
+                "count"
+              ],
+              "properties": {
+                "method": {
+                  "$ref": "#/components/schemas/PaymentMethod"
+                },
+                "amountCents": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 0,
+                  "description": "Paid with this method. Integer MXN cents (40000 = $400.00)."
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Charges paid with this method."
+                }
+              }
+            }
+          },
+          "customers": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "active",
+              "plan",
+              "limit"
+            ],
+            "description": "Snapshot. The free plan allows 5 active customers; use `active`/`limit` for the upgrade prompt.",
+            "properties": {
+              "active": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Active customers."
+              },
+              "plan": {
+                "$ref": "#/components/schemas/Plan"
+              },
+              "limit": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 1,
+                "description": "Max active customers for the plan; null = unlimited."
+              }
+            }
+          },
+          "topDebtors": {
+            "type": "array",
+            "maxItems": 5,
+            "description": "Snapshot. Customers with unpaid charges, sorted by `amountCents` desc, then `oldestDueDate` asc. Empty when nobody owes.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "customerId",
+                "name",
+                "amountCents",
+                "overdueCount",
+                "oldestDueDate"
+              ],
+              "properties": {
+                "customerId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "amountCents": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 0,
+                  "description": "Total unpaid by the customer. Integer MXN cents (40000 = $400.00)."
+                },
+                "overdueCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Unpaid charges past due."
+                },
+                "oldestDueDate": {
+                  "type": "string",
+                  "format": "date",
+                  "description": "Due date of the customer's oldest unpaid charge."
+                }
+              }
+            }
+          }
+        }
+      },
+      "Granularity": {
+        "type": "string",
+        "enum": [
+          "day",
+          "week",
+          "month"
+        ],
+        "description": "Bucket size. Weeks start on Monday; months on day 1. Edge buckets are clipped to the period."
+      },
+      "TrendBucket": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "start",
+          "end",
+          "collectedCents",
+          "paidCount",
+          "issuedCents",
+          "issuedCount"
+        ],
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date",
+            "description": "First day of the bucket, inclusive."
+          },
+          "end": {
+            "type": "string",
+            "format": "date",
+            "description": "Last day of the bucket, inclusive."
+          },
+          "collectedCents": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Paid within the bucket. Integer MXN cents."
+          },
+          "paidCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Charges paid within the bucket."
+          },
+          "issuedCents": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Charged (created) within the bucket. Integer MXN cents."
+          },
+          "issuedCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Charges created within the bucket."
+          }
+        }
+      },
+      "DashboardTrend": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "contractorId",
+          "period",
+          "currency",
+          "granularity",
+          "buckets"
+        ],
+        "properties": {
+          "contractorId": {
+            "type": "string"
+          },
+          "period": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "from",
+              "to",
+              "timezone"
+            ],
+            "description": "Resolved period (defaults applied).",
+            "properties": {
+              "from": {
+                "type": "string",
+                "format": "date"
+              },
+              "to": {
+                "type": "string",
+                "format": "date"
+              },
+              "timezone": {
+                "type": "string",
+                "const": "America/Mexico_City"
+              }
+            }
+          },
+          "currency": {
+            "type": "string",
+            "const": "MXN"
+          },
+          "granularity": {
+            "$ref": "#/components/schemas/Granularity"
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrendBucket"
+            },
+            "description": "Contiguous and chronological, covering the whole period. Buckets without activity are present with zeros."
+          }
+        }
+      },
+      "CustomerStanding": {
+        "type": "string",
+        "enum": [
+          "overdue",
+          "pending",
+          "up_to_date"
+        ],
+        "description": "`overdue`: at least one unpaid charge past due. `pending`: unpaid charges, none overdue. `up_to_date`: nothing unpaid."
+      },
+      "CustomerSort": {
+        "type": "string",
+        "enum": [
+          "overdue",
+          "name",
+          "last_payment"
+        ],
+        "description": "`overdue`: overdue amount desc, then outstanding desc, then name. `name`: A–Z. `last_payment`: most recent payment first; never paid last."
+      },
+      "ChargeStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "paid",
+          "cancelled"
+        ],
+        "description": "Lifecycle of a charge. Overdue is derived (see `overdue`), not a status. Must match the charges module."
+      },
+      "CustomerBalance": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "outstandingCents",
+          "overdueCents"
+        ],
+        "properties": {
+          "outstandingCents": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "All unpaid charges. Integer MXN cents."
+          },
+          "overdueCents": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Unpaid charges past due; subset of outstanding. Integer MXN cents."
+          }
+        }
+      },
+      "LastPayment": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "amountCents",
+          "paidAt",
+          "method"
+        ],
+        "properties": {
+          "amountCents": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Amount of the last payment. Integer MXN cents."
+          },
+          "paidAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "method": {
+            "$ref": "#/components/schemas/PaymentMethod"
+          }
+        }
+      },
+      "CustomerRow": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "customerId",
+          "name",
+          "standing",
+          "balance",
+          "lastPayment",
+          "nextDueDate",
+          "oldestDueDate"
+        ],
+        "properties": {
+          "customerId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "standing": {
+            "$ref": "#/components/schemas/CustomerStanding"
+          },
+          "balance": {
+            "$ref": "#/components/schemas/CustomerBalance"
+          },
+          "lastPayment": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LastPayment"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null if the customer never paid."
+          },
+          "nextDueDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "description": "Earliest due date among unpaid charges not yet overdue."
+          },
+          "oldestDueDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "description": "Earliest due date among overdue charges."
+          }
+        }
+      },
+      "StandingCounts": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "all",
+          "overdue",
+          "pending",
+          "upToDate"
+        ],
+        "description": "For the filter tabs. Ignores `standing` and `cursor`, honors `search`.",
+        "properties": {
+          "all": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Active customers."
+          },
+          "overdue": {
+            "type": "integer",
+            "minimum": 0,
+            "description": ""
+          },
+          "pending": {
+            "type": "integer",
+            "minimum": 0,
+            "description": ""
+          },
+          "upToDate": {
+            "type": "integer",
+            "minimum": 0,
+            "description": ""
+          }
+        }
+      },
+      "DashboardCustomers": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "customers",
+          "counts",
+          "nextCursor"
+        ],
+        "properties": {
+          "customers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustomerRow"
+            }
+          },
+          "counts": {
+            "$ref": "#/components/schemas/StandingCounts"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Pass as `cursor` for the next page; null on the last page."
+          }
+        }
+      },
+      "CustomerTotals": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "paidCents",
+          "paidCount",
+          "averageDaysToPay"
+        ],
+        "description": "Lifetime figures of the customer.",
+        "properties": {
+          "paidCents": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Total paid. Integer MXN cents."
+          },
+          "paidCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Charges paid."
+          },
+          "averageDaysToPay": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Mean days from creation to payment, one decimal; null if never paid."
+          }
+        }
+      },
+      "DashboardCustomerDetail": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "customer",
+          "phone",
+          "totals",
+          "charges",
+          "nextCursor"
+        ],
+        "properties": {
+          "customer": {
+            "$ref": "#/components/schemas/CustomerRow"
+          },
+          "phone": {
+            "type": "string",
+            "description": "For the WhatsApp contact button."
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "Omitted when not provided."
+          },
+          "totals": {
+            "$ref": "#/components/schemas/CustomerTotals"
+          },
+          "charges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DashboardCharge"
+            },
+            "description": "History, newest `createdAt` first, cancelled included."
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Pass as `cursor` for the next page; null on the last page."
+          }
+        }
+      },
+      "ActivityType": {
+        "type": "string",
+        "enum": [
+          "payment_received",
+          "charge_created",
+          "reminder_sent",
+          "charge_cancelled",
+          "charge_updated"
+        ],
+        "description": "`payment_received` drives the live PAGADO stamp. `charge_updated`: concept, due date or amount changed (notes and tags do not create activity)."
+      },
+      "ActivityItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "type",
+          "occurredAt",
+          "customerId",
+          "customerName",
+          "chargeId",
+          "concept",
+          "amountCents",
+          "paymentMethod"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable; use it to dedupe items received both via the stream and the list."
+          },
+          "type": {
+            "$ref": "#/components/schemas/ActivityType"
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "customerId": {
+            "type": "string"
+          },
+          "customerName": {
+            "type": "string"
+          },
+          "chargeId": {
+            "type": "string"
+          },
+          "concept": {
+            "type": "string"
+          },
+          "amountCents": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Charge amount (or amount received for payment_received). Integer MXN cents."
+          },
+          "paymentMethod": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PaymentMethod"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Only for `payment_received`."
+          }
+        }
+      },
+      "DashboardActivity": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActivityItem"
+            },
+            "description": "Newest first."
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Pass as `cursor` for the next page; null on the last page."
+          }
+        }
+      },
+      "ManualPaymentMethod": {
+        "type": "string",
+        "enum": [
+          "cash",
+          "transfer",
+          "other"
+        ],
+        "description": "Subset of PaymentMethod accepted by `recordManualPayment`."
+      },
+      "ChargeField": {
+        "type": "string",
+        "enum": [
+          "concept",
+          "dueDate",
+          "amountCents",
+          "note",
+          "tags"
+        ],
+        "description": "Editable field. While `pending`: all. When `paid` or `cancelled`: only `note` and `tags`."
+      },
+      "ChargeSort": {
+        "type": "string",
+        "enum": [
+          "due_date",
+          "created",
+          "amount"
+        ],
+        "description": "`due_date`: most urgent first, then newest. `created`: newest first. `amount`: largest first."
+      },
+      "DashboardCharge": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "chargeId",
+          "version",
+          "customerId",
+          "customerName",
+          "concept",
+          "amountCents",
+          "dueDate",
+          "status",
+          "overdue",
+          "createdAt",
+          "updatedAt",
+          "paidAt",
+          "paymentMethod",
+          "cancelledAt",
+          "reminderCount",
+          "note",
+          "tags",
+          "editableFields"
+        ],
+        "properties": {
+          "chargeId": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "Increments on every change, including pey payments. Send it back on updates (optimistic concurrency)."
+          },
+          "customerId": {
+            "type": "string"
+          },
+          "customerName": {
+            "type": "string"
+          },
+          "concept": {
+            "type": "string",
+            "description": "Shown to the customer in their banking app."
+          },
+          "amountCents": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Amount to collect. Integer MXN cents."
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ChargeStatus"
+          },
+          "overdue": {
+            "type": "boolean",
+            "description": "`status = pending` and `dueDate` before today (America/Mexico_City)."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "paidAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Set when `status = paid` — show the PAGADO stamp."
+          },
+          "paymentMethod": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PaymentMethod"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set when `status = paid`."
+          },
+          "cancelledAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "reminderCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500,
+            "description": "Private note of the business; never shown to the customer."
+          },
+          "tags": {
+            "type": "array",
+            "maxItems": 10,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 30
+            },
+            "description": "Free labels to organize charges (e.g. `mayoreo`, `pedido-especial`). Trimmed and lowercased; duplicates removed."
+          },
+          "editableFields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChargeField"
+            },
+            "description": "Fields `updateDashboardCharge` accepts right now. Use it to enable or disable inputs."
+          }
+        }
+      },
+      "DashboardCharges": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "charges",
+          "totals",
+          "nextCursor"
+        ],
+        "properties": {
+          "charges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DashboardCharge"
+            }
+          },
+          "totals": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "count",
+              "amountCents"
+            ],
+            "description": "Over every charge matching the filters, not only this page.",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "amountCents": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0,
+                "description": "Sum of `amountCents`. Integer MXN cents."
+              }
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Pass as `cursor` for the next page; null on the last page."
+          }
+        }
+      },
+      "DashboardChargeDetail": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "charge",
+          "timeline"
+        ],
+        "properties": {
+          "charge": {
+            "$ref": "#/components/schemas/DashboardCharge"
+          },
+          "timeline": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActivityItem"
+            },
+            "description": "Everything that happened to this charge, oldest first."
+          }
+        }
+      },
+      "UpdateDashboardChargeRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version"
+        ],
+        "minProperties": 2,
+        "description": "Partial update (JSON merge semantics): absent fields stay unchanged; `note: null` clears the note; `tags` replaces the whole list. Every field sent must be in the charge's `editableFields`, otherwise 409 `field_not_editable`.",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "`version` of the charge you are editing. If it changed meanwhile (e.g. the customer just paid), the server answers 409 `version_conflict`."
+          },
+          "concept": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date",
+            "description": "Cannot be in the past."
+          },
+          "amountCents": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 100000000,
+            "description": "The charges module updates or replaces any active pey request."
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500
+          },
+          "tags": {
+            "type": "array",
+            "maxItems": 10,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 30
+            },
+            "description": "Free labels to organize charges (e.g. `mayoreo`, `pedido-especial`). Trimmed and lowercased; duplicates removed."
+          }
+        }
+      },
+      "ManualPaymentRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "method"
+        ],
+        "properties": {
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "`version` of the charge you are editing. If it changed meanwhile (e.g. the customer just paid), the server answers 409 `version_conflict`."
+          },
+          "method": {
+            "$ref": "#/components/schemas/ManualPaymentMethod"
+          },
+          "paidAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the money was received. Default: now. Cannot be in the future."
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Appended to the charge note, e.g. the transfer reference."
+          }
+        }
+      },
+      "CancelChargeRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version"
+        ],
+        "properties": {
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "`version` of the charge you are editing. If it changed meanwhile (e.g. the customer just paid), the server answers 409 `version_conflict`."
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Stored in the timeline; not shown to the customer."
           }
         }
       }
     }
-  }
+  },
+  "tags": [
+    {
+      "name": "onboarding",
+      "description": "Registro del microempresario."
+    },
+    {
+      "name": "dashboard",
+      "description": "Tablero del microempresario: ver y actualizar sus cobros. Todo vive bajo `/api/contractors/{contractorId}/dashboard`. Los efectos en pey (invalidar o actualizar solicitudes) son responsabilidad del módulo de cobros."
+    }
+  ]
 }

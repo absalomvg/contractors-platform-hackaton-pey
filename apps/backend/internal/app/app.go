@@ -1,6 +1,7 @@
 package app
 
 import (
+	"contractors-platform/backend/internal/modules/dashboard"
 	"contractors-platform/backend/internal/modules/onboarding"
 	"contractors-platform/backend/internal/modules/onboarding/domain"
 	"contractors-platform/backend/internal/modules/onboarding/infrastructure"
@@ -21,6 +22,7 @@ func NewWith(onboardings domain.Repository) http.Handler {
 		writer.Header().Set("Content-Type", "application/json")
 		_, _ = writer.Write([]byte(`{"contractors":[]}`))
 	})
-	onboarding.Register(mux, onboardings)
+	onboardingReader := onboarding.Register(mux, onboardings)
+	dashboard.Register(mux, dashboard.NewOnboardingSource(onboardingReader))
 	return mux
 }
