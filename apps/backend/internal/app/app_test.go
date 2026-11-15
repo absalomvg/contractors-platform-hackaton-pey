@@ -1019,3 +1019,76 @@ func TestDemoModeAndSeedIdempotency(t *testing.T) {
 	}
 	_ = fmt.Sprintf("verified")
 }
+
+func TestPaymentRefreshesPendingCodiStatusFromPey(t *testing.T) {
+	var lookedUp bool
+	peyServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch {
+		case request.Method == http.MethodPost && request.URL.Path == "/bank-account":
+			_, _ = writer.Write([]byte(`{"id":"01BANKPENDING","codiStatus":"PENDING"}`))
+		case request.Method == http.MethodGet && request.URL.Path == "/bank-account/01BANKPENDING":
+			lookedUp = true
+			_, _ = writer.Write([]byte(`{"id":"01BANKPENDING","codiStatus":"ACTIVE"}`))
+		case request.Method == http.MethodPost && request.URL.Path == "/codi/qr":
+			_, _ = writer.Write([]byte(`{"id":"01QR","qrString":"{\"TYP\":19}","qrImage":"data:image/png;base64,AA=="}`))
+		default:
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer peyServer.Close()
+
+	peyClient := infrastructure.NewPeyClient(peyServer.URL, "secret")
+	onbRepo := infrastructure.NewMemoryRepository()
+	handler, err := NewWith(Dependencies{
+		Onboardings: onbRepo,
+		Accounts:    accinfra.NewMemoryRepository(),
+		Banks:       peyClient,
+		Collector:   peyClient,
+		Hasher:      accounts.NewPBKDF2Hasher(1_000),
+		Mailer:      accounts.NewLogMailer(),
+		Policy:      accdomain.DemoPolicy(),
+		Clock:       time.Now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	signup := doJSON(handler, http.MethodPost, "/api/auth/signup", map[string]string{
+		"email": "david-refresh@praxis.mx", "phone": "5512345678", "pin": "123456",
+	}, nil)
+	if signup.Code != http.StatusCreated {
+		t.Fatalf("signup: %d %s", signup.Code, signup.Body.String())
+	}
+	cookie := sessionCookieFrom(signup)
+	onbBody := `{"name":"David","profession":"Diseñador","clabe":"002010077777777771","client":{"name":"Roberto","phone":"5512345678","email":"roberto@empresa.mx"}}`
+	onbReq := httptest.NewRequest(http.MethodPost, "/api/onboarding", strings.NewReader(onbBody))
+	onbReq.Header.Set("Content-Type", "application/json")
+	onbReq.AddCookie(cookie)
+	onbRec := httptest.NewRecorder()
+	handler.ServeHTTP(onbRec, onbReq)
+	if onbRec.Code != http.StatusCreated {
+		t.Fatalf("onboarding expected 201, got %d: %s", onbRec.Code, onbRec.Body.String())
+	}
+	var created domain.Onboarding
+	if err := json.Unmarshal(onbRec.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+
+	payBody := `{"onboardingId":"` + created.ID + `","clientName":"Roberto","concept":"Anticipo","amountCents":1,"method":"CODI_QR"}`
+	payReq := httptest.NewRequest(http.MethodPost, "/api/payments", strings.NewReader(payBody))
+	payReq.Header.Set("Content-Type", "application/json")
+	payReq.AddCookie(cookie)
+	payRec := httptest.NewRecorder()
+	handler.ServeHTTP(payRec, payReq)
+	if payRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 after refreshing ACTIVE status, got %d: %s", payRec.Code, payRec.Body.String())
+	}
+	if !lookedUp {
+		t.Fatal("expected GET /bank-account/01BANKPENDING lookup")
+	}
+	stored, found := onbRepo.Find(created.ID)
+	if !found || stored.CodiStatus != onbdefs.CodiActive {
+		t.Fatalf("expected persisted codiStatus=ACTIVE, got found=%v status=%q", found, stored.CodiStatus)
+	}
+}

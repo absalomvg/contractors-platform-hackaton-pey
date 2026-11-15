@@ -386,6 +386,7 @@ export function DashboardWorkspace({
             clabeLabel={clabeLabel}
             onCreateCharge={handleCreateCharge}
             onRegisterCustomer={() => setScreen('clients')}
+            onNotify={notify}
             onCreated={(result) => {
               // Show the new charge as the first row of the payments table.
               setFilter('all');

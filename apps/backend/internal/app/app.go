@@ -9,12 +9,14 @@ import (
 	clientsinfra "contractors-platform/backend/internal/modules/clients/infrastructure"
 	"contractors-platform/backend/internal/modules/dashboard"
 	"contractors-platform/backend/internal/modules/onboarding"
+	onbdef "contractors-platform/backend/internal/modules/onboarding/definitions"
 	onbdomain "contractors-platform/backend/internal/modules/onboarding/domain"
 	onbinfra "contractors-platform/backend/internal/modules/onboarding/infrastructure"
 	"contractors-platform/backend/internal/modules/payments"
 	paymentsdomain "contractors-platform/backend/internal/modules/payments/domain"
 	paymentsinfra "contractors-platform/backend/internal/modules/payments/infrastructure"
 	"errors"
+	"log"
 	"net/http"
 	"time"
 )
@@ -67,6 +69,13 @@ func NewWith(deps Dependencies) (http.Handler, error) {
 	if deps.PaymentVendors == nil {
 		deps.PaymentVendors = paymentVendorGate{repository: deps.Onboardings}
 	}
+	if lookup, ok := deps.Banks.(bankStatusLookup); ok && deps.Onboardings != nil {
+		deps.PaymentVendors = refreshingVendorSource{
+			base:       deps.PaymentVendors,
+			repository: deps.Onboardings,
+			lookup:     lookup,
+		}
+	}
 	if deps.Collector == nil {
 		deps.Collector = paymentsinfra.UnavailableCollector{}
 	}
@@ -111,6 +120,10 @@ func (gate vendorGate) Exists(id string) (bool, error) {
 	return found, nil
 }
 
+type bankStatusLookup interface {
+	Lookup(ctx context.Context, bankAccountID string) ([]byte, error)
+}
+
 type paymentVendorGate struct{ repository onbdomain.Repository }
 
 func (gate paymentVendorGate) Account(vendorID string) (paymentsdomain.Account, bool, error) {
@@ -122,6 +135,40 @@ func (gate paymentVendorGate) Account(vendorID string) (paymentsdomain.Account, 
 		BankAccountID: user.BankAccountID,
 		CodiStatus:    user.CodiStatus,
 	}, true, nil
+}
+
+// refreshingVendorSource syncs pending Pey bank account statuses on demand before creating a payment.
+type refreshingVendorSource struct {
+	base       paymentsdomain.VendorSource
+	repository onbdomain.Repository
+	lookup     bankStatusLookup
+}
+
+func (source refreshingVendorSource) Account(vendorID string) (paymentsdomain.Account, bool, error) {
+	account, found, err := source.base.Account(vendorID)
+	if err != nil || !found || account.BankAccountID == "" || account.CodiStatus == onbdef.CodiActive {
+		return account, found, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	payload, lookupErr := source.lookup.Lookup(ctx, account.BankAccountID)
+	if lookupErr != nil {
+		log.Printf("payments: lookup bank status %s (%s): %v", vendorID, account.BankAccountID, lookupErr)
+		return account, true, nil
+	}
+	refreshed, ok := onbdomain.DecodeBankAccount(payload)
+	if !ok || refreshed.Status == account.CodiStatus {
+		return account, true, nil
+	}
+	account.CodiStatus = refreshed.Status
+	if user, ok := source.repository.Find(vendorID); ok {
+		if updated, attachOK := onbdomain.AttachBankAccount(user, refreshed); attachOK {
+			if _, saveErr := source.repository.RecordBankAccount(updated); saveErr != nil {
+				log.Printf("payments: update refreshed bank status %s: %v", vendorID, saveErr)
+			}
+		}
+	}
+	return account, true, nil
 }
 
 type onboardingClients struct{ directory clients.Directory }
