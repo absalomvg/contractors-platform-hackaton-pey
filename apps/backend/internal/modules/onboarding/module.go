@@ -34,13 +34,14 @@ func Register(
 	repository domain.Repository,
 	banks domain.BankRegistrar,
 	owners domain.Owners,
+	clients domain.ClientStore,
 	guard access.Guard,
 ) Module {
-	read := application.NewReadUser(repository)
-	seed := application.NewSeedUser(repository)
+	read := application.NewReadUser(repository, clients)
+	seed := application.NewSeedUser(repository, clients)
 	handler := presentation.New(
-		application.NewRegisterUser(repository, banks, owners),
-		application.NewUpdateUser(repository, banks),
+		application.NewRegisterUser(repository, banks, owners, clients),
+		application.NewUpdateUser(repository, banks, clients),
 		read,
 	)
 	mux.HandleFunc("POST /api/onboarding", guard.Session(handler.Create))

@@ -50,7 +50,7 @@ type BankRegistrar interface {
 	Register(context.Context, []byte) ([]byte, error)
 }
 
-// Repository guarda y recupera usuarios.
+// Repository guarda y recupera usuarios. No escribe clientes.
 type Repository interface {
 	Save(User) (User, error)
 	Update(User) (User, error)
@@ -59,4 +59,11 @@ type Repository interface {
 	HasCLABE(string) (bool, error)
 	HasOtherCLABE(clabe, excludeID string) (bool, error)
 	RecordBankAccount(User) (User, error)
+	Remove(id string) error
+}
+
+// ClientStore guarda y lee el primer cliente en el módulo de clientes.
+type ClientStore interface {
+	SaveFirst(vendorID string, customer Customer) error
+	First(vendorID string) (Customer, bool, error)
 }

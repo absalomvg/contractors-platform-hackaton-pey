@@ -10,11 +10,12 @@ import (
 type UpdateUser struct {
 	repository domain.Repository
 	banks      domain.BankRegistrar
+	clients    domain.ClientStore
 }
 
 // NewUpdateUser prepara el caso de uso de edición de perfil.
-func NewUpdateUser(repository domain.Repository, banks domain.BankRegistrar) *UpdateUser {
-	return &UpdateUser{repository: repository, banks: banks}
+func NewUpdateUser(repository domain.Repository, banks domain.BankRegistrar, clients domain.ClientStore) *UpdateUser {
+	return &UpdateUser{repository: repository, banks: banks, clients: clients}
 }
 
 // Update valida, guarda los cambios y registra o actualiza la CLABE en Pey cuando corresponda.
@@ -52,6 +53,11 @@ func (act *UpdateUser) Update(
 	}
 	if err != nil {
 		return domain.Onboarding{}, nil, err
+	}
+	if act.clients != nil {
+		if customer, ok, clientErr := act.clients.First(saved.ID); clientErr == nil && ok {
+			saved.Customer = customer
+		}
 	}
 	if saved.CLABE != "" && (clabeChanged || saved.BankAccountID == "") {
 		return registerCLABEInPey(ctx, act.repository, act.banks, saved), nil, nil

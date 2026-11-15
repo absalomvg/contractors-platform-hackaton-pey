@@ -7,19 +7,25 @@ import (
 	"log"
 )
 
-// RegisterUser guarda el usuario creado desde el formulario y registra su CLABE en Pey.
+// RegisterUser guarda el contrato del vendedor, su primer cliente y registra su CLABE en Pey.
 type RegisterUser struct {
 	repository domain.Repository
 	banks      domain.BankRegistrar
 	owners     domain.Owners
+	clients    domain.ClientStore
 }
 
-// NewRegisterUser prepara el acto de alta con el repositorio, el registro en Pey y los dueños de cuenta.
-func NewRegisterUser(repository domain.Repository, banks domain.BankRegistrar, owners domain.Owners) *RegisterUser {
-	return &RegisterUser{repository: repository, banks: banks, owners: owners}
+// NewRegisterUser prepara el acto de alta con el repositorio, el registro en Pey, los dueños de cuenta y los clientes.
+func NewRegisterUser(
+	repository domain.Repository,
+	banks domain.BankRegistrar,
+	owners domain.Owners,
+	clients domain.ClientStore,
+) *RegisterUser {
+	return &RegisterUser{repository: repository, banks: banks, owners: owners, clients: clients}
 }
 
-// Create pide el usuario al contrato, lo guarda, lo ata a la cuenta y, si Pey responde, anota el id y el estado.
+// Create arma el vendedor, guarda su primer cliente, lo ata a la cuenta y pide a Pey el bank id de su CLABE.
 func (act *RegisterUser) Create(ctx context.Context, input domain.Input) (domain.Onboarding, map[string]string, error) {
 	if act.owners != nil {
 		if err := act.owners.Claimable(ctx); err != nil {
@@ -44,14 +50,27 @@ func (act *RegisterUser) Create(ctx context.Context, input domain.Input) (domain
 	if err != nil {
 		return domain.Onboarding{}, nil, err
 	}
+	if act.clients != nil {
+		if err := act.clients.SaveFirst(saved.ID, saved.Customer); err != nil {
+			if removeErr := act.repository.Remove(saved.ID); removeErr != nil {
+				log.Printf("onboarding: remove vendor %s after client failure: %v", saved.ID, removeErr)
+			}
+			log.Printf("onboarding: first client %s: %v", saved.ID, err)
+			return domain.Onboarding{}, nil, err
+		}
+	}
 	if act.owners != nil {
 		if err := act.owners.Claim(ctx, saved.ID); err != nil {
+			if removeErr := act.repository.Remove(saved.ID); removeErr != nil {
+				log.Printf("onboarding: remove vendor %s after claim failure: %v", saved.ID, removeErr)
+			}
 			return domain.Onboarding{}, nil, err
 		}
 	}
 	return registerCLABEInPey(ctx, act.repository, act.banks, saved), nil, nil
 }
 
+// registerCLABEInPey envía la CLABE y la identidad del vendedor ya guardado a Pey.
 func registerCLABEInPey(
 	ctx context.Context,
 	repository domain.Repository,
@@ -81,5 +100,6 @@ func registerCLABEInPey(
 		log.Printf("onboarding: record bank account %s %s: %v", saved.ID, account.ID, err)
 		return domain.View(saved)
 	}
+	recorded.Customer = saved.Customer
 	return domain.View(recorded)
 }

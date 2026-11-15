@@ -7,11 +7,13 @@ import (
 	"contractors-platform/backend/internal/modules/accounts/definitions"
 	accdomain "contractors-platform/backend/internal/modules/accounts/domain"
 	accinfra "contractors-platform/backend/internal/modules/accounts/infrastructure"
+	clientsinfra "contractors-platform/backend/internal/modules/clients/infrastructure"
 	dashboarddomain "contractors-platform/backend/internal/modules/dashboard/domain"
 	dashboardpresentation "contractors-platform/backend/internal/modules/dashboard/presentation"
 	onbdefs "contractors-platform/backend/internal/modules/onboarding/definitions"
 	"contractors-platform/backend/internal/modules/onboarding/domain"
 	"contractors-platform/backend/internal/modules/onboarding/infrastructure"
+	paymentsinfra "contractors-platform/backend/internal/modules/payments/infrastructure"
 	"contractors-platform/backend/internal/platform/database"
 	"encoding/json"
 	"errors"
@@ -545,28 +547,52 @@ func TestHTTPStatusCodes(t *testing.T) {
 }
 
 func TestCreateAndRetrieveWithSQLite(t *testing.T) {
-	db, err := database.OpenSQLite(filepath.Join(t.TempDir(), "app.db"))
+	dir := t.TempDir()
+	vendors, err := database.OpenSQLite(filepath.Join(dir, "vendors.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
-	onbRepo, err := infrastructure.NewSQLiteRepository(db)
+	defer vendors.Close()
+	clientsDB, err := database.OpenSQLite(filepath.Join(dir, "clients.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	accRepo, err := accinfra.NewSQLiteRepository(db)
+	defer clientsDB.Close()
+	paymentsDB, err := database.OpenSQLite(filepath.Join(dir, "payments.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer paymentsDB.Close()
+	onbRepo, err := infrastructure.NewSQLiteRepository(vendors)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accRepo, err := accinfra.NewSQLiteRepository(vendors)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientsRepo, err := clientsinfra.NewSQLiteRepository(clientsDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paymentsRepo, err := paymentsinfra.NewSQLiteRepository(paymentsDB)
 	if err != nil {
 		t.Fatal(err)
 	}
 	mailer := &spyMailer{}
 	handler, err := NewWith(Dependencies{
-		Onboardings: onbRepo,
-		Accounts:    accRepo,
-		Banks:       infrastructure.NewUnavailablePey(),
-		Hasher:      accounts.NewPBKDF2Hasher(1_000),
-		Mailer:      mailer,
-		Policy:      accdomain.StrictPolicy(),
-		Clock:       time.Now,
+		Onboardings:    onbRepo,
+		Accounts:       accRepo,
+		Clients:        clientsRepo,
+		ClientVendors:  clientsinfra.NewSQLiteVendors(vendors),
+		Payments:       paymentsRepo,
+		PaymentVendors: paymentsinfra.NewSQLiteVendors(vendors),
+		Collector:      paymentsinfra.UnavailableCollector{},
+		Banks:          infrastructure.NewUnavailablePey(),
+		Hasher:         accounts.NewPBKDF2Hasher(1_000),
+		Mailer:         mailer,
+		Policy:         accdomain.StrictPolicy(),
+		Clock:          time.Now,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -595,8 +621,31 @@ func TestCreateAndRetrieveWithSQLite(t *testing.T) {
 	req.AddCookie(cookie)
 	found := httptest.NewRecorder()
 	handler.ServeHTTP(found, req)
-	if found.Code != http.StatusOK || !strings.Contains(found.Body.String(), `"rfc":"AAA010101AAA"`) {
+	if found.Code != http.StatusOK || !strings.Contains(found.Body.String(), `"rfc":"AAA010101AAA"`) || !strings.Contains(found.Body.String(), `"email":"luis@example.com"`) {
 		t.Fatalf("find: %d %s", found.Code, found.Body)
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(response.Body.Bytes(), &created)
+	listReq := httptest.NewRequest(http.MethodGet, "/api/contractors/"+created.ID+"/clients", nil)
+	listReq.AddCookie(cookie)
+	listed := httptest.NewRecorder()
+	handler.ServeHTTP(listed, listReq)
+	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), `"entityType":"individual"`) || !strings.Contains(listed.Body.String(), `"+52 555 123 4567"`) {
+		t.Fatalf("clients: %d %s", listed.Code, listed.Body)
+	}
+	anonList := httptest.NewRecorder()
+	handler.ServeHTTP(anonList, httptest.NewRequest(http.MethodGet, "/api/contractors/"+created.ID+"/clients", nil))
+	if anonList.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 on anonymous clients list, got %d", anonList.Code)
+	}
+	anonPay := httptest.NewRecorder()
+	payReq := httptest.NewRequest(http.MethodPost, "/api/payments", strings.NewReader(`{"onboardingId":"`+created.ID+`","clientName":"Luis","concept":"Renta","amountCents":10000,"method":"PAYMENT_LINK"}`))
+	payReq.Header.Set("Content-Type", "application/json")
+	handler.ServeHTTP(anonPay, payReq)
+	if anonPay.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 on anonymous POST /api/payments, got %d", anonPay.Code)
 	}
 }
 
@@ -917,11 +966,17 @@ func TestDemoModeAndSeedIdempotency(t *testing.T) {
 	}
 
 	// Idempotent SQLite seeding across restarts.
-	db, err := database.OpenSQLite(filepath.Join(t.TempDir(), "demo.db"))
+	dir := t.TempDir()
+	db, err := database.OpenSQLite(filepath.Join(dir, "demo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	clientsDB, err := database.OpenSQLite(filepath.Join(dir, "clients.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clientsDB.Close()
 	onbSQLite, err := infrastructure.NewSQLiteRepository(db)
 	if err != nil {
 		t.Fatal(err)
@@ -930,15 +985,21 @@ func TestDemoModeAndSeedIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	clientsSQLite, err := clientsinfra.NewSQLiteRepository(clientsDB)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for run := 1; run <= 2; run++ {
 		_, err := NewWith(Dependencies{
-			Onboardings: onbSQLite,
-			Accounts:    accSQLite,
-			Banks:       infrastructure.NewUnavailablePey(),
-			Hasher:      accounts.NewPBKDF2Hasher(1_000),
-			Mailer:      accounts.NewLogMailer(),
-			Policy:      accdomain.DemoPolicy(),
-			Clock:       time.Now,
+			Onboardings:   onbSQLite,
+			Accounts:      accSQLite,
+			Clients:       clientsSQLite,
+			ClientVendors: clientsinfra.NewSQLiteVendors(db),
+			Banks:         infrastructure.NewUnavailablePey(),
+			Hasher:        accounts.NewPBKDF2Hasher(1_000),
+			Mailer:        accounts.NewLogMailer(),
+			Policy:        accdomain.DemoPolicy(),
+			Clock:         time.Now,
 		})
 		if err != nil {
 			t.Fatalf("seed run %d: %v", run, err)
@@ -949,8 +1010,12 @@ func TestDemoModeAndSeedIdempotency(t *testing.T) {
 		t.Fatalf("expected exactly 1 demo account, got count=%d err=%v", count, err)
 	}
 	var onbCount int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM onboardings WHERE clabe = ?`, demoContractorInput().CLABE).Scan(&onbCount); err != nil || onbCount != 1 {
-		t.Fatalf("expected exactly 1 demo onboarding, got count=%d err=%v", onbCount, err)
+	if err := db.QueryRow(`SELECT COUNT(*) FROM bank_accounts WHERE clabe = ?`, demoContractorInput().CLABE).Scan(&onbCount); err != nil || onbCount != 1 {
+		t.Fatalf("expected exactly 1 demo bank account, got count=%d err=%v", onbCount, err)
+	}
+	var clientCount int
+	if err := clientsDB.QueryRow(`SELECT COUNT(*) FROM clients`).Scan(&clientCount); err != nil || clientCount != 1 {
+		t.Fatalf("expected exactly 1 demo first client, got count=%d err=%v", clientCount, err)
 	}
 	_ = fmt.Sprintf("verified")
 }

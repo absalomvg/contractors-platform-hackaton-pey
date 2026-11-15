@@ -129,3 +129,11 @@ func (repository *MemoryRepository) FindByCLABE(clabe string) (domain.User, bool
 	}
 	return domain.User{}, false
 }
+
+// Remove borra el alta que no pudo guardar su primer cliente.
+func (repository *MemoryRepository) Remove(id string) error {
+	repository.mutex.Lock()
+	defer repository.mutex.Unlock()
+	delete(repository.records, id)
+	return nil
+}
