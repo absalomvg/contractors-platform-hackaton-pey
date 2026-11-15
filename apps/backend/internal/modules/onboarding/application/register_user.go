@@ -11,15 +11,21 @@ import (
 type RegisterUser struct {
 	repository domain.Repository
 	banks      domain.BankRegistrar
+	owners     domain.Owners
 }
 
-// NewRegisterUser prepara el acto de alta con el repositorio y el registro en Pey.
-func NewRegisterUser(repository domain.Repository, banks domain.BankRegistrar) *RegisterUser {
-	return &RegisterUser{repository: repository, banks: banks}
+// NewRegisterUser prepara el acto de alta con el repositorio, el registro en Pey y los dueños de cuenta.
+func NewRegisterUser(repository domain.Repository, banks domain.BankRegistrar, owners domain.Owners) *RegisterUser {
+	return &RegisterUser{repository: repository, banks: banks, owners: owners}
 }
 
-// Create pide el usuario al contrato, lo guarda y, si Pey responde, anota el id y el estado.
+// Create pide el usuario al contrato, lo guarda, lo ata a la cuenta y, si Pey responde, anota el id y el estado.
 func (act *RegisterUser) Create(ctx context.Context, input domain.Input) (domain.Onboarding, map[string]string, error) {
+	if act.owners != nil {
+		if err := act.owners.Claimable(ctx); err != nil {
+			return domain.Onboarding{}, nil, err
+		}
+	}
 	user, fieldErrors := domain.Build(input)
 	if len(fieldErrors) > 0 {
 		return domain.Onboarding{}, fieldErrors, nil
@@ -38,15 +44,25 @@ func (act *RegisterUser) Create(ctx context.Context, input domain.Input) (domain
 	if err != nil {
 		return domain.Onboarding{}, nil, err
 	}
-	return act.recordPeyAccount(ctx, saved), nil, nil
+	if act.owners != nil {
+		if err := act.owners.Claim(ctx, saved.ID); err != nil {
+			return domain.Onboarding{}, nil, err
+		}
+	}
+	return registerCLABEInPey(ctx, act.repository, act.banks, saved), nil, nil
 }
 
-func (act *RegisterUser) recordPeyAccount(ctx context.Context, saved domain.User) domain.Onboarding {
+func registerCLABEInPey(
+	ctx context.Context,
+	repository domain.Repository,
+	banks domain.BankRegistrar,
+	saved domain.User,
+) domain.Onboarding {
 	payload, ok := domain.EncodeRegistration(saved)
-	if !ok {
+	if !ok || banks == nil {
 		return domain.View(saved)
 	}
-	response, err := act.banks.Register(ctx, payload)
+	response, err := banks.Register(ctx, payload)
 	if err != nil {
 		log.Printf("onboarding: pey register %s: %v", saved.ID, err)
 		return domain.View(saved)
@@ -60,7 +76,7 @@ func (act *RegisterUser) recordPeyAccount(ctx context.Context, saved domain.User
 	if !ok {
 		return domain.View(saved)
 	}
-	recorded, err := act.repository.RecordBankAccount(updated)
+	recorded, err := repository.RecordBankAccount(updated)
 	if err != nil {
 		log.Printf("onboarding: record bank account %s %s: %v", saved.ID, account.ID, err)
 		return domain.View(saved)

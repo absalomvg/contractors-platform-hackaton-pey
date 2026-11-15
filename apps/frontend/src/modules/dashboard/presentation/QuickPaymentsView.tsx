@@ -255,7 +255,7 @@ export function QuickPaymentsView({
 
           <div className="db-preview-card">
             <div className="db-preview-meta">
-              <span>{profile.business.name}</span>
+              <span>{profile.business.name.trim() || profile.name}</span>
               <span>CLABE {clabeLabel}</span>
             </div>
             <strong>

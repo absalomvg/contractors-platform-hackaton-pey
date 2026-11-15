@@ -119,7 +119,7 @@ export function FirstChargeStepper({
           <span className="db-stepper-eyebrow">Tu cuenta está lista</span>
           <h2 id={`${baseId}-title`}>¡Hola, {profile.name}! 👋</h2>
           <p className="db-muted">
-            <strong>{profile.business.name}</strong> ya puede cobrar. Vamos a crear tu primer cobro en menos de un minuto.
+            <strong>{profile.business.name.trim() || profile.name}</strong> ya puede cobrar. Vamos a crear tu primer cobro en menos de un minuto.
           </p>
           <ul className="db-stepper-benefits">
             <li>Tu cliente paga con un enlace de pago o con QR CoDi desde su banco.</li>
@@ -276,7 +276,7 @@ export function FirstChargeStepper({
           <h2 id={`${baseId}-title`}>Revisa y crea tu cobro</h2>
           <div className="db-preview-card">
             <div className="db-preview-meta">
-              <span>{profile.business.name}</span>
+              <span>{profile.business.name.trim() || profile.name}</span>
               <span>CLABE {clabeLabel}</span>
             </div>
             <strong>

@@ -85,11 +85,19 @@ func ensureUserColumns(db *sql.DB) error {
 
 // HasCLABE indica si otro usuario ya guardó esa CLABE.
 func (repository *SQLiteRepository) HasCLABE(clabe string) (bool, error) {
+	return repository.HasOtherCLABE(clabe, "")
+}
+
+// HasOtherCLABE indica si otro contratista distinto a excludeID ya guardó esa CLABE.
+func (repository *SQLiteRepository) HasOtherCLABE(clabe, excludeID string) (bool, error) {
 	if clabe == "" {
 		return false, nil
 	}
 	var found int
-	err := repository.db.QueryRow(`SELECT 1 FROM onboardings WHERE clabe = ? LIMIT 1`, clabe).Scan(&found)
+	err := repository.db.QueryRow(
+		`SELECT 1 FROM onboardings WHERE clabe = ? AND id <> ? LIMIT 1`,
+		clabe, excludeID,
+	).Scan(&found)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -130,6 +138,46 @@ func (repository *SQLiteRepository) Save(user domain.User) (domain.User, error) 
 	return cloneUser(user), nil
 }
 
+// Update actualiza los campos editables de perfil, negocio y cuenta de depósito de un contratista existente.
+func (repository *SQLiteRepository) Update(user domain.User) (domain.User, error) {
+	if fieldErrors := domain.Allow(user); len(fieldErrors) > 0 {
+		return domain.User{}, errRejected
+	}
+	taken, err := repository.HasOtherCLABE(user.CLABE, user.ID)
+	if err != nil {
+		return domain.User{}, err
+	}
+	if taken {
+		return domain.User{}, domain.ErrCLABETaken
+	}
+	result, err := repository.db.Exec(
+		`UPDATE onboardings
+		 SET name = ?, profession = ?, tax_regime = ?, business_name = ?, business_activity = ?,
+		     rfc = ?, clabe = ?, codi_status = ?, bank_account_id = ?
+		 WHERE id = ?`,
+		user.Name, user.Profession, user.TaxRegime, user.BusinessName, user.BusinessActivity,
+		user.RFC, user.CLABE, user.CodiStatus, user.BankAccountID, user.ID,
+	)
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			return domain.User{}, domain.ErrCLABETaken
+		}
+		return domain.User{}, err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return domain.User{}, err
+	}
+	if rows == 0 {
+		return domain.User{}, domain.ErrNotFound
+	}
+	updated, found := repository.Find(user.ID)
+	if !found {
+		return domain.User{}, domain.ErrNotFound
+	}
+	return updated, nil
+}
+
 // RecordBankAccount anota el id y el estado que Pey devolvió para un usuario ya guardado.
 func (repository *SQLiteRepository) RecordBankAccount(user domain.User) (domain.User, error) {
 	if fieldErrors := domain.Allow(user); len(fieldErrors) > 0 {
@@ -156,16 +204,30 @@ func (repository *SQLiteRepository) RecordBankAccount(user domain.User) (domain.
 
 // Find busca un usuario por id.
 func (repository *SQLiteRepository) Find(id string) (domain.User, bool) {
+	return repository.findOne(`SELECT id, name, profession, client_name, client_phone, client_email,
+		tax_regime, business_name, business_activity, rfc, clabe, codi_status, bank_account_id
+		FROM onboardings WHERE id = ?`, id)
+}
+
+// FindByCLABE busca un usuario por CLABE normalizada.
+func (repository *SQLiteRepository) FindByCLABE(clabe string) (domain.User, bool) {
+	if clabe == "" {
+		return domain.User{}, false
+	}
+	return repository.findOne(`SELECT id, name, profession, client_name, client_phone, client_email,
+		tax_regime, business_name, business_activity, rfc, clabe, codi_status, bank_account_id
+		FROM onboardings WHERE clabe = ? LIMIT 1`, clabe)
+}
+
+func (repository *SQLiteRepository) findOne(query, arg string) (domain.User, bool) {
 	var user domain.User
 	var taxRegime sql.NullString
-	err := repository.db.QueryRow(`SELECT id, name, profession, client_name, client_phone, client_email,
-		tax_regime, business_name, business_activity, rfc, clabe, codi_status, bank_account_id
-		FROM onboardings WHERE id = ?`, id).Scan(
+	err := repository.db.QueryRow(query, arg).Scan(
 		&user.ID, &user.Name, &user.Profession, &user.Customer.Name, &user.Customer.Phone, &user.Customer.Email,
 		&taxRegime, &user.BusinessName, &user.BusinessActivity, &user.RFC, &user.CLABE, &user.CodiStatus, &user.BankAccountID)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
-			log.Printf("onboarding: find %s: %v", id, err)
+			log.Printf("onboarding: find %s: %v", arg, err)
 		}
 		return domain.User{}, false
 	}

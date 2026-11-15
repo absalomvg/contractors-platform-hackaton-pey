@@ -1,3 +1,4 @@
+import type { UpdateOnboardingProfileRequest } from '@platform/contracts';
 import type { DashboardGateway } from './application/dashboard-gateway';
 import { httpDashboardGateway } from './infrastructure/http-dashboard-gateway';
 import { createMockDashboard } from './infrastructure/mock-dashboard-gateway';
@@ -15,12 +16,23 @@ const gateway: DashboardGateway = { ...mock, profile: httpDashboardGateway.profi
 
 interface DashboardWorkspaceProps {
   readonly contractorId: string;
-  /** Called when the backend does not know the contractor (404). */
+  readonly preloadDemo?: boolean;
+  /** Called when the backend does not know the contractor or rejects the session (401/403/404). */
   readonly onNotFound: () => void;
   readonly onSignOut: () => void;
+  readonly onUpdateProfile?: (patch: UpdateOnboardingProfileRequest) => Promise<void>;
 }
 
-export function DashboardWorkspace({ contractorId, onNotFound, onSignOut }: DashboardWorkspaceProps) {
+export function DashboardWorkspace({
+  contractorId,
+  preloadDemo = false,
+  onNotFound,
+  onSignOut,
+  onUpdateProfile,
+}: DashboardWorkspaceProps) {
+  if (preloadDemo) {
+    mock.preloadDemoData(contractorId);
+  }
   return (
     <Workspace
       gateway={gateway}
@@ -30,6 +42,7 @@ export function DashboardWorkspace({ contractorId, onNotFound, onSignOut }: Dash
       contractorId={contractorId}
       onNotFound={onNotFound}
       onSignOut={onSignOut}
+      onUpdateProfile={onUpdateProfile}
     />
   );
 }
