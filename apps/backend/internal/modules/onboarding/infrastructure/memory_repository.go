@@ -72,7 +72,7 @@ func (repository *MemoryRepository) Save(user domain.User) (domain.User, error) 
 
 // Update reemplaza los campos editables de perfil, negocio y cuenta de depósito.
 func (repository *MemoryRepository) Update(user domain.User) (domain.User, error) {
-	if fieldErrors := domain.Allow(user); len(fieldErrors) > 0 {
+	if fieldErrors := domain.AllowVendor(user); len(fieldErrors) > 0 {
 		return domain.User{}, errRejected
 	}
 	stored := cloneUser(user)
@@ -92,7 +92,7 @@ func (repository *MemoryRepository) Update(user domain.User) (domain.User, error
 
 // RecordBankAccount anota el id y el estado que Pey devolvió para un usuario ya guardado.
 func (repository *MemoryRepository) RecordBankAccount(user domain.User) (domain.User, error) {
-	if fieldErrors := domain.Allow(user); len(fieldErrors) > 0 {
+	if fieldErrors := domain.AllowVendor(user); len(fieldErrors) > 0 {
 		return domain.User{}, errRejected
 	}
 	repository.mutex.Lock()

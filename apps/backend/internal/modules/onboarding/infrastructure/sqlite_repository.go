@@ -135,7 +135,7 @@ func (repository *SQLiteRepository) Save(user domain.User) (domain.User, error) 
 
 // Update actualiza los campos editables de perfil, negocio y cuenta de depósito de un contratista existente.
 func (repository *SQLiteRepository) Update(user domain.User) (domain.User, error) {
-	if fieldErrors := domain.Allow(user); len(fieldErrors) > 0 {
+	if fieldErrors := domain.AllowVendor(user); len(fieldErrors) > 0 {
 		return domain.User{}, errRejected
 	}
 	taken, err := repository.HasOtherCLABE(user.CLABE, user.ID)
@@ -214,7 +214,7 @@ func (repository *SQLiteRepository) Remove(id string) error {
 
 // RecordBankAccount anota el id y el estado de Pey solo en la cuenta del vendedor.
 func (repository *SQLiteRepository) RecordBankAccount(user domain.User) (domain.User, error) {
-	if fieldErrors := domain.Allow(user); len(fieldErrors) > 0 {
+	if fieldErrors := domain.AllowVendor(user); len(fieldErrors) > 0 {
 		return domain.User{}, errRejected
 	}
 	result, err := repository.vendors.Exec(`UPDATE bank_accounts SET bank_account_id = ?, codi_status = ? WHERE vendor_id = ?`,
